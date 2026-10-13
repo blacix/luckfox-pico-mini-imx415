@@ -224,6 +224,86 @@ module is not already loaded. The `S99` prefix includes the script in the
 device's normal init-script sequence. Deployment requires a connected device
 with a root ADB shell.
 
+## USB networking, RTSP streaming, and V4L2 capture
+
+### Set up the host USB Ethernet interface
+
+The board exposes a USB network interface named `usb0`. Check its current
+address from the host with:
+
+```sh
+adb shell 'ip -4 addr show dev usb0'
+```
+
+In the current setup, the device reports `172.32.0.93/16`. Give the host's USB
+Ethernet interface a different address in the same subnet. Find its name with
+`ip -br link`; it may look like `enx...`. For example:
+
+```sh
+sudo ip link set dev enx... up
+sudo ip addr replace 172.32.0.100/16 dev enx...
+```
+
+Replace `enx...` with the actual host interface name. The host and device
+addresses must be unique. Verify that the route to the device uses this USB
+interface with `ip route get 172.32.0.93`, then check connectivity with
+`ping 172.32.0.93`.
+
+### View the RTSP stream
+
+The `rkipc` application provides the RTSP server. The stock startup hook
+`/etc/init.d/S21appinit` runs `/oem/usr/bin/RkLunch.sh`, which starts `rkipc`;
+the RTSP setting is `enable_rtsp = 1` in `/userdata/rkipc.ini`. The main stream
+is available at `/live/0` on port 554. Check that the port is reachable, then
+play the stream from the host:
+
+```sh
+nc -vz -w 3 172.32.0.93 554
+ffplay -rtsp_transport tcp -fflags nobuffer -flags low_delay \
+  -framedrop -analyzeduration 0 -probesize 32 -sync video \
+  rtsp://172.32.0.93:554/live/0
+```
+
+The ffplay options reduce client-side buffering; the camera pipeline or RTSP
+server may still add latency. To stop and restart the stock application stack:
+
+```sh
+adb shell /etc/init.d/S21appinit stop
+adb shell /etc/init.d/S21appinit start
+```
+
+The stop action terminates `rkipc` and other application init scripts, so the
+RTSP stream is unavailable until it starts again.
+
+### Capture one frame with `v4l2-ctl`
+
+Stop `rkipc` before direct V4L2 capture because it owns the camera pipeline:
+
+```sh
+adb shell killall rkipc
+```
+
+On the current firmware, `/dev/video11` is the ISP main-path node and supports
+NV12. Capture one frame to the device, pull it to the host, and convert it to
+JPEG:
+
+```sh
+adb shell 'v4l2-ctl -d /dev/video11 \
+  --set-fmt-video=width=2304,height=1296,pixelformat=NV12 \
+  --stream-mmap=4 --stream-count=1 --stream-to=/tmp/frame.nv12'
+adb pull /tmp/frame.nv12 .
+ffmpeg -f rawvideo -pixel_format nv12 -video_size 2304x1296 \
+  -i frame.nv12 -frames:v 1 frame.jpg
+```
+
+If the node number differs after a firmware change, identify the ISP main-path
+node with `adb shell v4l2-ctl --list-devices`. Restart the stock application
+stack when finished:
+
+```sh
+adb shell /etc/init.d/S21appinit start
+```
+
 ## Testing PWM0 on the second LED
 
 PWM0 uses GPIO1_PA2, which is connected to the second board LED. The ST7789
