@@ -1,7 +1,8 @@
-# LuckFox Pico Mini IMX415 Camera Support
+# LuckFox Pico Mini SC3336 and IMX415 Camera Support
 
-This repository contains the work required to add Sony IMX415 camera support
-to a LuckFox Pico Mini board based on the Rockchip RV1103G SoC.
+This repository contains the work required to build firmware for a LuckFox Pico
+Mini board based on the Rockchip RV1103G SoC with either its supported SC3336
+camera or a Sony IMX415 camera.
 
 The project covers the kernel sensor driver, device-tree configuration,
 Rockchip camera-pipeline integration, firmware changes, camera tuning files,
@@ -13,7 +14,7 @@ and the validation needed to capture frames from the board.
 - SoC: Rockchip RV1103G
 - Kernel: Linux 5.10.160
 - Operating system: Buildroot 2023.02.6
-- Camera: Sony IMX415
+- Camera: SC3336 or Sony IMX415, selected at build time
 - Camera interface: two-lane MIPI CSI-2
 
 The RV1103 camera pipeline is limited compared with the native IMX415
@@ -97,9 +98,11 @@ Work should proceed in this order:
 2. Confirm the exact IMX415 module, wiring, I²C address, clock, power rails,
    and GPIO configuration.
 3. Build an unchanged SDK baseline for the target board.
-4. Enable and package the IMX415 kernel driver.
-5. Replace the SC3336 device-tree configuration with a verified IMX415 node.
-6. Validate sensor probing, media links, and conservative capture modes.
+4. Enable and package the SC3336 and IMX415 kernel drivers.
+5. Select the attached camera and its matching device-tree endpoint at build
+   time.
+6. Validate sensor probing, media links, and conservative capture modes for
+   each camera.
 7. Add and validate an appropriate IMX415 IQ/tuning configuration.
 8. Integrate and test the complete application camera path.
 
@@ -132,18 +135,21 @@ The tracked inputs and the SDK paths they replace are:
 Make changes in the tracked project copies under `kernel/` and `overlay/`.
 The root `build.sh` copies them into the SDK before building. The stock Pico
 Mini BoardConfig already selects the init overlay, so no custom BoardConfig is
-needed. The DTSI contains the IMX415 node and CSI-2 graph plus PWM0 LED setup;
-the defconfig enables `CONFIG_VIDEO_IMX415=m` and `CONFIG_LEDS_PWM=y`.
+needed. The tracked DTSI contains the SC3336 and IMX415 nodes, the CSI-2 graph,
+and PWM0 LED setup. The root build script selects one supported camera in the
+SDK copy. The defconfig enables `CONFIG_VIDEO_SC3336=m`,
+`CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
 
 ## Building, flashing, and testing the image
 
 The root build script builds and packages the complete firmware image; it is
 not a driver-only build. The tracked DTSI configures PWM0 as the LED consumer,
-and the tracked kernel defconfig enables both PWM LED support and the IMX415
-driver. Follow this sequence to put those changes on the board:
+and the tracked kernel defconfig enables PWM LED support and both SC3336 and
+IMX415 drivers. Choose the camera attached to the board for each build:
 
-1. Configure the camera and PWM LED in the tracked DTSI and enable
-   `CONFIG_VIDEO_IMX415=m` and `CONFIG_LEDS_PWM=y` in the tracked defconfig.
+1. Keep camera node definitions in the tracked DTSI and configure the PWM LED
+   and kernel options in the tracked project files. The build script enables
+   only the selected camera and pairs it with CSI input 0.
 2. Select the SPI-NAND LuckFox Pico Mini target only once for this SDK setup:
 
    ```sh
@@ -151,12 +157,15 @@ driver. Follow this sequence to put those changes on the board:
    ```
 
    Choose `RV1103_Luckfox_Pico_Mini`, `[1] SPI_NAND`, and `Buildroot`.
-3. Build the full image from the repository root. This copies the tracked
-   project files into the SDK, builds all components, and packages
+3. Build the full image from the repository root, specifying the connected
+   camera. The script copies the tracked project files into the SDK, selects
+   the camera in the SDK DTSI copy, builds all components, and packages
    `update.img`:
 
    ```sh
-   ./build.sh
+   ./build.sh sc3336
+   # Or select the IMX415:
+   ./build.sh imx415
    ```
 4. Flash the generated image to the board:
 
@@ -165,30 +174,32 @@ driver. Follow this sequence to put those changes on the board:
      ./sdk/luckfox-pico/output/image/update.img
    ```
 5. After the board boots, test the PWM LED using the section below. Validate
-   IMX415 probing, media topology, and frame capture using the steps in
+   the selected sensor’s probe, media topology, and frame capture using the steps in
    [implementation-plan.md](implementation-plan.md).
 
 The SDK stores the selected target in `.BoardConfig.mk`; do not run `lunch`
-again for subsequent builds. The image includes `imx415.ko` under
-`/oem/usr/ko/`, and the SDK startup sequence loads it during boot. After
-flashing, verify it is loaded with `lsmod | grep imx415`.
+again for subsequent builds. The image includes the SC3336 and IMX415 modules
+under `/oem/usr/ko/`, and the SDK startup sequence loads them during boot.
+After flashing, verify the selected driver with
+`lsmod | grep -E 'sc3336|imx415'`.
 
 `deploy.sh` remains useful for testing a newly built module without rebuilding
 and flashing the complete image. It copies the module to the same persistent
 `/oem/usr/ko/` location and restarts the init script.
 
-After the build, locate the generated module and verify the kernel
+After the build, locate the generated modules and verify the kernel
 configuration:
 
 ```sh
-ls -l sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/modules/5.10.160/kernel/drivers/media/i2c/imx415.ko
-grep -n "CONFIG_VIDEO_IMX415\|CONFIG_LEDS_PWM" sdk/luckfox-pico/sysdrv/source/objs_kernel/.config
+ls -l sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/modules/5.10.160/kernel/drivers/media/i2c/{imx415,sc3336}.ko
+grep -n "CONFIG_VIDEO_IMX415\|CONFIG_VIDEO_SC3336\|CONFIG_LEDS_PWM" sdk/luckfox-pico/sysdrv/source/objs_kernel/.config
 ```
 
 The expected configuration is:
 
 ```text
 CONFIG_VIDEO_IMX415=m
+CONFIG_VIDEO_SC3336=m
 CONFIG_LEDS_PWM=y
 ```
 
@@ -295,8 +306,8 @@ adb shell
 Then repeat the device-shell commands above.
 
 This temporary test does not modify the firmware image. It verifies module
-compatibility with the running kernel. On firmware built from the current
-tracked DTSI, the IMX415 node is enabled and the module may probe the sensor;
+compatibility with the running kernel. On firmware built with the `imx415`
+argument, the IMX415 node is enabled and the module may probe the sensor;
 on an older stock image, it will only load the module because the device tree
 still describes the stock camera configuration.
 
@@ -306,28 +317,28 @@ missing symbols, or insufficient permissions.
 
 ## Editing the device tree
 
-Edit the tracked DTSI described in
-[Tracked project files and SDK synchronization](#tracked-project-files-and-sdk-synchronization).
-The SC3336 sensor nodes and CSI endpoint connections are defined in it. Inspect
-them from the repository root:
+The tracked DTSI described in
+[Tracked project files and SDK synchronization](#tracked-project-files-and-sdk-synchronization)
+retains the supported sensor definitions. The root build script selects SC3336
+or IMX415 in the copied SDK DTSI based on its camera argument; it enables that node,
+disables the alternatives, and points CSI input 0 to its endpoint. Inspect the
+nodes from the repository root:
 
 ```sh
 grep -n -E "sc3336|sc4336|sc530ai|mipi|csi2|endpoint|ff470000" \
   kernel/rv1103-luckfox-pico-ipc.dtsi
 ```
 
-Replace the SC3336 sensor node with an IMX415 sensor node in the included
-DTSI file. Also update the corresponding CSI endpoint reference from
-`sc3336_out` to the new IMX415 endpoint name. Preserve the
-existing CSI-2, RKCIF, and endpoint graph unless the board wiring requires a
-change. The IMX415 node must use the confirmed sensor I²C address, clock,
-regulators, GPIOs, and two-lane CSI-2 configuration; do not guess unverified
-hardware properties.
+Preserve both sensor nodes and their endpoint definitions. The IMX415 node
+must use the confirmed sensor I²C address, clock, regulators, GPIOs, and
+two-lane CSI-2 configuration; do not guess unverified hardware properties.
+The build selection changes only the active node statuses and CSI input 0
+remote endpoint in the SDK copy.
 
 After editing the device tree, rebuild and package from the repository root:
 
 ```sh
-./build.sh
+./build.sh imx415
 ```
 
 The updated device tree must eventually be packaged into the boot image. The
@@ -341,12 +352,15 @@ device tree, and recovery image have been checked together.
 
 ## Current device-tree integration
 
-The tracked `kernel/rv1103-luckfox-pico-ipc.dtsi` currently contains the
-staged camera migration:
+The tracked `kernel/rv1103-luckfox-pico-ipc.dtsi` keeps both supported camera
+definitions. Its base selection is IMX415; the root build script prepares the
+SDK copy for the camera passed as its argument:
 
-- SC3336, SC4336, and SC530AI nodes are disabled.
-- The CSI-2 input endpoint points to `imx415_out`.
-- The IMX415 node is enabled at I²C address `0x30`.
+- For `sc3336`, the SC3336 node is enabled and CSI input 0 points to
+  `sc3336_out`.
+- For `imx415`, the IMX415 node is enabled and CSI input 0 points to
+  `imx415_out`.
+- The other camera nodes are disabled in each generated SDK DTSI.
 - The existing MIPI clock and camera power-down pin are reused.
 - Reset GPIO and regulator assignments remain TODOs until the module wiring is
   confirmed.
@@ -354,13 +368,15 @@ staged camera migration:
   GPIO1_PA2.
 - PWM0 uses GPIO1_PA2 and is exposed through a `pwm-leds` consumer named
   `pwm0_led` with normal polarity.
-- The tracked kernel configuration enables both `CONFIG_VIDEO_IMX415=m` and
-  `CONFIG_LEDS_PWM=y`.
+- The tracked kernel configuration enables `CONFIG_VIDEO_SC3336=m`,
+  `CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
 
 The root-level build script is the required build entry point:
 
 ```sh
-./build.sh
+./build.sh sc3336
+# Or:
+./build.sh imx415
 ```
 
 After a successful build, the complete firmware image is available at:
@@ -378,12 +394,11 @@ Flash it from the repository root with the local upgrade tool:
 
 ## Status
 
-The reproducible build, kernel configuration, IMX415 module packaging and
-loading, PWM0 LED support, rootfs overlay, deployment script, and init-script
-workflow are complete. The remaining implementation work is the final IMX415
-camera device-tree configuration, including confirmation of the sensor reset
-and regulator wiring. After that, sensor probing, conservative two-lane frame
-capture, IMX415 IQ-file selection, and final application validation remain.
+The reproducible build, SC3336/IMX415 camera selection, kernel module
+packaging, PWM0 LED support, rootfs overlay, deployment script, and init-script
+workflow are in place. Final validation still requires confirming the IMX415
+reset and regulator wiring, then testing sensor probing, conservative two-lane
+frame capture, the appropriate IQ file, and the application camera path.
 
 See [camera.md](camera.md) and [implementation-plan.md](implementation-plan.md)
 for the detailed findings and plan.
