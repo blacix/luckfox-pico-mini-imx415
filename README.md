@@ -275,6 +275,61 @@ adb shell /etc/init.d/S21appinit start
 The stop action terminates `rkipc` and other application init scripts, so the
 RTSP stream is unavailable until it starts again.
 
+### Read back the SPI-NAND firmware
+
+The Rockchip upgrade tool reads partitions while the board is in Loader mode.
+If it is detected as `Maskrom`, load the SDK's generated loader into RAM with
+`DB`; this does not write it to flash. From the repository root:
+
+```sh
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool LD
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool DB \
+  sdk/luckfox-pico/output/image/download.bin
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool LD
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool PL
+```
+
+`PL` prints the device's parameter partition table. On the current firmware it
+reports:
+
+```text
+Partition Info(parameter):
+NO  LBA        Size       Name
+01  0x00000000 0x00000200 env
+02  0x00000200 0x00000200 idblock
+03  0x00000400 0x00000400 uboot
+04  0x00000800 0x00002000 boot
+05  0x00002800 0x0000f000 oem
+06  0x00011800 0x00003000 userdata
+07  0x00014800 0x0002a800 rootfs
+```
+
+`RL` reads a range of sectors using `RL <start-LBA> <sector-count> <file>`.
+To save each listed partition separately, run these from the repository root:
+
+```sh
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000000 0x00000200 env.img
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000200 0x00000200 idblock.img
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000400 0x00000400 uboot.img
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000800 0x00002000 boot.img
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00002800 0x0000f000 oem.img
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00011800 0x00003000 userdata.img
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00014800 0x0002a800 rootfs.img
+```
+
+To save the whole listed partition range as one contiguous raw LBA image, read
+from LBA 0 for `0x3f000` sectors (the end of `rootfs`):
+
+```sh
+sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL \
+  0x00000000 0x0003f000 spi-nand-partitioned.img
+```
+
+The combined file is about 126 MiB and includes all listed partitions. It is a
+raw logical-sector image, not a packaged Rockchip `update.img` and not a
+physical NAND dump containing spare/OOB data. Use `RFI` to query the chip
+capacity if you also need to account for unpartitioned space.
+
 ### Capture one frame with `v4l2-ctl`
 
 Stop `rkipc` before direct V4L2 capture because it owns the camera pipeline:
