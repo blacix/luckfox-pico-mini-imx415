@@ -14,6 +14,7 @@ run_test() {
     local low
     local mid
     max=$(cat "$led/max_brightness")
+    max=$((max / 2))
     low=$((max / 4))
     mid=$((max / 2))
 
