@@ -74,7 +74,7 @@
 	// DHT11
 	dht11_sensor {
 		compatible = "dht11";
-		pinctrl-names = "default";
+		pinctrl-names = "rockchip,camera_default";
 		pinctrl-0 = <&gpio1_pc7>;
 
 		dht11@1 {
@@ -149,7 +149,7 @@
 
 			csi_dphy_input0: endpoint@0 {
 				reg = <0>;
-				remote-endpoint = <&imx415_out>;
+				remote-endpoint = <&sc3336_out>;
 				data-lanes = <1 2>;
 			};
 
@@ -162,6 +162,12 @@
 			csi_dphy_input2: endpoint@2 {
 				reg = <2>;
 				remote-endpoint = <&sc530ai_out>;
+				data-lanes = <1 2>;
+			};
+
+			csi_dphy_input3: endpoint@3 {
+				reg = <3>;
+				remote-endpoint = <&imx415_out>;
 				data-lanes = <1 2>;
 			};
 		};
@@ -248,24 +254,22 @@
 		};
 	};
 
-	imx415: imx415@30 {
+	imx415: imx415@37 {
 		compatible = "sony,imx415";
 		status = "okay";
-		reg = <0x30>;
+		reg = <0x37>;
 		clocks = <&cru MCLK_REF_MIPI0>;
 		clock-names = "xvclk";
-		power-gpios = <&gpio3 RK_PC5 GPIO_ACTIVE_LOW>;
-		/* TODO: Add the confirmed reset-gpios property. */
-		/* TODO: Add confirmed avdd-supply, dovdd-supply, and dvdd-supply. */
-		pinctrl-names = "rockchip,camera_default";
+		reset-gpios = <&gpio3 RK_PC5 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
 		pinctrl-0 = <&mipi_refclk_out0>;
 		rockchip,camera-module-index = <0>;
 		rockchip,camera-module-facing = "back";
-		rockchip,camera-module-name = "IMX415";
-		rockchip,camera-module-lens-name = "unknown";
+		rockchip,camera-module-name = "CMK-OT2022-PX1";
+		rockchip,camera-module-lens-name = "IR0147-36IRC-8M-F20";
 		port {
 			imx415_out: endpoint {
-				remote-endpoint = <&csi_dphy_input0>;
+				remote-endpoint = <&csi_dphy_input3>;
 				data-lanes = <1 2>;
 			};
 		};

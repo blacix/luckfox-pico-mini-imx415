@@ -28,6 +28,9 @@ mode.
 .
 ├── README.md
 ├── camera.md
+├── camera/                       # Tracked IMX415 camera configuration
+│   ├── imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
+│   └── rkipc-imx415-720p.ini
 ├── implementation-plan.md
 ├── kernel/                       # Tracked kernel inputs
 │   ├── rv1103-luckfox-pico-ipc.dtsi
@@ -112,10 +115,11 @@ The stock SC3336 IQ file must not be treated as an IMX415 configuration.
 
 The project takes the kernel inputs from the SDK and maintains the modified
 versions as tracked files under `kernel/`; rootfs additions are tracked under
-`overlay/`. Keep project changes in those tracked copies. The SDK directory is
-ignored by this repository. Before the first build replaces SDK files with
-project files, save the original SDK DTSI and defconfig as `.orig`. Run this
-once from the repository root:
+`overlay/`; the IMX415 `rkipc` profile is tracked under `camera/`. Keep project
+changes in those tracked copies. The SDK directory is ignored by this
+repository. Before the first build replaces SDK files with project files, save
+the original SDK DTSI and defconfig as `.orig`. Run this once from the
+repository root:
 
 ```sh
 cp sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi \
@@ -132,13 +136,22 @@ The tracked inputs and the SDK paths they replace are:
 | `kernel/luckfox_rv1106_linux_defconfig` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig` |
 | `overlay/a-eye/` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/` |
 
-Make changes in the tracked project copies under `kernel/` and `overlay/`.
-The root `build.sh` copies them into the SDK before building. The stock Pico
-Mini BoardConfig already selects the init overlay, so no custom BoardConfig is
-needed. The tracked DTSI contains the SC3336 and IMX415 nodes, the CSI-2 graph,
-and PWM0 LED setup. The root build script selects one supported camera in the
-SDK copy. The defconfig enables `CONFIG_VIDEO_SC3336=m`,
-`CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
+`camera/rkipc-imx415-720p.ini` is the project-owned 720p IMX415 profile for the
+`rkipc` application, adapted from the extracted Pico Zero profile.
+`camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` is the matching ISP IQ
+tuning file. Both are needed for the tested IMX415 `rkipc` setup. The image
+build script does not currently install either file; the RTSP instructions
+below show how to copy them to the device.
+
+Make changes in the project-owned files under `kernel/`, `overlay/`, and
+`camera/`. The root `build.sh` copies the kernel and overlay files into the SDK
+before building; copy the camera INI to the device using the RTSP instructions
+below. The stock Pico Mini BoardConfig already selects the init overlay, so no
+custom BoardConfig is needed. The tracked DTSI contains the SC3336 and IMX415
+nodes, the CSI-2 graph, and PWM0 LED setup. The root build script selects one
+supported camera in the SDK copy. SC3336 uses D-PHY input 0; IMX415 uses
+D-PHY input 3, matching the working RV1103 camera configuration. The defconfig
+enables `CONFIG_VIDEO_SC3336=m`, `CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
 
 ## Building, flashing, and testing the image
 
@@ -149,7 +162,7 @@ IMX415 drivers. Choose the camera attached to the board for each build:
 
 1. Keep camera node definitions in the tracked DTSI and configure the PWM LED
    and kernel options in the tracked project files. The build script enables
-   only the selected camera and pairs it with CSI input 0.
+   only the selected camera. SC3336 uses D-PHY input 0; IMX415 uses input 3.
 2. Select the SPI-NAND LuckFox Pico Mini target only once for this SDK setup:
 
    ```sh
@@ -251,17 +264,40 @@ interface with `ip route get 172.32.0.93`, then check connectivity with
 
 ### View the RTSP stream
 
-The `rkipc` application provides the RTSP server. The stock startup hook
-`/etc/init.d/S21appinit` runs `/oem/usr/bin/RkLunch.sh`, which starts `rkipc`;
-the RTSP setting is `enable_rtsp = 1` in `/userdata/rkipc.ini`. The main stream
-is available at `/live/0` on port 554. Check that the port is reachable, then
-play the stream from the host:
+The `rkipc` application provides the RTSP server. The main stream is available
+at `/live/0` on port 554. With the stock camera configuration,
+`/etc/init.d/S21appinit` runs `/oem/usr/bin/RkLunch.sh` and starts `rkipc` using
+the selected stock INI. For an IMX415 build, the unmodified `RkLunch.sh` does
+not select the tracked IMX415 profile, so start `rkipc` manually with it:
+
+```sh
+adb push camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json \
+  /oem/usr/share/iqfiles/
+adb push camera/rkipc-imx415-720p.ini /userdata/rkipc-imx415.ini
+adb shell killall rkipc
+adb shell 'export LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib:$LD_LIBRARY_PATH; \
+  nohup /oem/usr/bin/rkipc -c /userdata/rkipc-imx415.ini \
+  -a /oem/usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &'
+```
+
+The `-c` argument selects the INI profile. The `-a` argument points to the
+directory containing the IMX415 IQ JSON file. This manual start is not
+persistent across reboot. Check the RTSP port and play the stream from the
+host:
 
 ```sh
 nc -vz -w 3 172.32.0.93 554
 ffplay -rtsp_transport tcp -fflags nobuffer -flags low_delay \
   -framedrop -analyzeduration 0 -probesize 32 -sync video \
   rtsp://172.32.0.93:554/live/0
+```
+
+If using ADB forwarding instead of the USB device IP, forward port 554 and use
+the loopback URL:
+
+```sh
+adb forward tcp:8554 tcp:554
+ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/0
 ```
 
 The ffplay options reduce client-side buffering; the camera pipeline or RTSP
@@ -273,7 +309,8 @@ adb shell /etc/init.d/S21appinit start
 ```
 
 The stop action terminates `rkipc` and other application init scripts, so the
-RTSP stream is unavailable until it starts again.
+RTSP stream is unavailable until it starts again. After stopping the stock
+stack on an IMX415 build, use the manual IMX415 start command above.
 
 ### Read back the SPI-NAND firmware
 
@@ -456,7 +493,7 @@ The tracked DTSI described in
 [Tracked project files and SDK synchronization](#tracked-project-files-and-sdk-synchronization)
 retains the supported sensor definitions. The root build script selects SC3336
 or IMX415 in the copied SDK DTSI based on its camera argument; it enables that node,
-disables the alternatives, and points CSI input 0 to its endpoint. Inspect the
+disables the alternatives, and uses the selected sensor's D-PHY connection. Inspect the
 nodes from the repository root:
 
 ```sh
@@ -464,11 +501,12 @@ grep -n -E "sc3336|sc4336|sc530ai|mipi|csi2|endpoint|ff470000" \
   kernel/rv1103-luckfox-pico-ipc.dtsi
 ```
 
-Preserve both sensor nodes and their endpoint definitions. The IMX415 node
-must use the confirmed sensor I²C address, clock, regulators, GPIOs, and
-two-lane CSI-2 configuration; do not guess unverified hardware properties.
-The build selection changes only the active node statuses and CSI input 0
-remote endpoint in the SDK copy.
+Preserve both sensor nodes and their endpoint definitions. The working IMX415
+configuration uses I²C address `0x37`, the CRU MIPI camera clock,
+`mipi_refclk_out0`, GPIO3 PC5 as active-low reset, and two CSI-2 lanes. Its
+camera-module and lens names are `CMK-OT2022-PX1` and
+`IR0147-36IRC-8M-F20`, matching the IQ file. The build selection changes the
+active SC3336 and IMX415 node statuses in the SDK copy.
 
 After editing the device tree, rebuild and package from the repository root:
 
@@ -488,17 +526,19 @@ device tree, and recovery image have been checked together.
 ## Current device-tree integration
 
 The tracked `kernel/rv1103-luckfox-pico-ipc.dtsi` keeps both supported camera
-definitions. Its base selection is IMX415; the root build script prepares the
-SDK copy for the camera passed as its argument:
+definitions and their separate D-PHY inputs. The root build script prepares
+the SDK copy for the camera passed as its argument:
 
-- For `sc3336`, the SC3336 node is enabled and CSI input 0 points to
+- For `sc3336`, the SC3336 node is enabled and D-PHY input 0 connects to
   `sc3336_out`.
-- For `imx415`, the IMX415 node is enabled and CSI input 0 points to
+- For `imx415`, the IMX415 node is enabled and D-PHY input 3 connects to
   `imx415_out`.
 - The other camera nodes are disabled in each generated SDK DTSI.
-- The existing MIPI clock and camera power-down pin are reused.
-- Reset GPIO and regulator assignments remain TODOs until the module wiring is
-  confirmed.
+- IMX415 uses I²C address `0x37`, the existing CRU MIPI camera clock and
+  GPIO3 PC5 as active-low reset, and the SDK driver’s
+  `rockchip,camera_default` pinctrl state with `mipi_refclk_out0`.
+- IMX415 camera-module and lens names match the bundled tuning profile:
+  `CMK-OT2022-PX1` and `IR0147-36IRC-8M-F20`.
 - The ST7789 display node is commented out because its D/C signal used
   GPIO1_PA2.
 - PWM0 uses GPIO1_PA2 and is exposed through a `pwm-leds` consumer named

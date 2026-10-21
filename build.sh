@@ -52,9 +52,14 @@ cp -- "${DTSI_SOURCE}" "${DTSI_TARGET}"
 if [[ "${CAMERA}" == "sc3336" ]]; then
     echo "Selecting SC3336 in the SDK DTSI"
     sed -i \
-        -e '/csi_dphy_input0: endpoint@0/,/data-lanes = <1 2>;/ s@remote-endpoint = <&imx415_out>;@remote-endpoint = <\&sc3336_out>;@' \
         -e '/sc3336: sc3336@30/,/port {/ s/status = "disabled";/status = "okay";/' \
-        -e '/imx415: imx415@30/,/port {/ s/status = "okay";/status = "disabled";/' \
+        -e '/imx415: imx415@37/,/port {/ s/status = "okay";/status = "disabled";/' \
+        "${DTSI_TARGET}"
+else
+    echo "Selecting IMX415 in the SDK DTSI"
+    sed -i \
+        -e '/sc3336: sc3336@30/,/port {/ s/status = "okay";/status = "disabled";/' \
+        -e '/imx415: imx415@37/,/port {/ s/status = "disabled";/status = "okay";/' \
         "${DTSI_TARGET}"
 fi
 
