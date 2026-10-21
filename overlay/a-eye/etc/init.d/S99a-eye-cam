@@ -1,0 +1,68 @@
+#!/bin/sh
+
+RKIPC=/oem/usr/bin/rkipc
+INI=/usr/share/rkipc-imx415-720p.ini
+IQ_DIR=/usr/share/iqfiles
+IQ_FILE=${IQ_DIR}/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
+LOGFILE=/tmp/rkipc.log
+
+stop_existing() {
+	killall rkipc 2>/dev/null || true
+
+	count=0
+	while pidof rkipc >/dev/null 2>&1; do
+		count=$((count + 1))
+		if [ "$count" -ge 5 ]; then
+			echo "Timed out waiting for rkipc to stop" >&2
+			return 1
+		fi
+		sleep 1
+	done
+}
+
+start() {
+	if [ ! -x "$RKIPC" ]; then
+		echo "Missing rkipc executable: $RKIPC" >&2
+		return 1
+	fi
+	if [ ! -f "$INI" ]; then
+		echo "Missing IMX415 rkipc profile: $INI" >&2
+		return 1
+	fi
+	if [ ! -f "$IQ_FILE" ]; then
+		echo "Missing IMX415 IQ file: $IQ_FILE" >&2
+		return 1
+	fi
+
+	stop_existing || return 1
+	LD_LIBRARY_PATH="/oem/usr/lib:/oem/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+	export LD_LIBRARY_PATH
+	nohup "$RKIPC" -c "$INI" -a "$IQ_DIR" >>"$LOGFILE" 2>&1 </dev/null &
+	pid=$!
+	sleep 1
+	if ! kill -0 "$pid" 2>/dev/null; then
+		echo "rkipc failed to start; see $LOGFILE" >&2
+		return 1
+	fi
+	echo "Started IMX415 rkipc (pid $pid)"
+}
+
+stop() {
+	stop_existing
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		stop && start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}" >&2
+		exit 1
+		;;
+esac
