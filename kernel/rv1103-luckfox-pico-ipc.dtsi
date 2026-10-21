@@ -168,7 +168,7 @@
 			csi_dphy_input3: endpoint@3 {
 				reg = <3>;
 				remote-endpoint = <&imx415_out>;
-				data-lanes = <1 2>;
+				data-lanes = <1 2>; /* IMX415 uses this two-lane CSI input. */
 			};
 		};
 
@@ -265,6 +265,14 @@
 		pinctrl-0 = <&mipi_refclk_out0>;
 		rockchip,camera-module-index = <0>;
 		rockchip,camera-module-facing = "back";
+		/*
+		 * rkaiq selects the IQ JSON using
+		 * <sensor>_<camera-module-name>_<camera-module-lens-name>.json.
+		 * Keep these exact identifiers from the working camera configuration:
+		 * the long lens string is part of the IQ filename, not a typo to tidy.
+		 * Together they select
+		 * imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json.
+		 */
 		rockchip,camera-module-name = "CMK-OT2022-PX1";
 		rockchip,camera-module-lens-name = "IR0147-36IRC-8M-F20";
 		port {
