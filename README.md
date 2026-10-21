@@ -115,11 +115,11 @@ The stock SC3336 IQ file must not be treated as an IMX415 configuration.
 
 The project takes the kernel inputs from the SDK and maintains the modified
 versions as tracked files under `kernel/`; rootfs additions are tracked under
-`overlay/`; the IMX415 `rkipc` profile is tracked under `camera/`. Keep project
-changes in those tracked copies. The SDK directory is ignored by this
-repository. Before the first build replaces SDK files with project files, save
-the original SDK DTSI and defconfig as `.orig`. Run this once from the
-repository root:
+`overlay/`; the IMX415 `rkipc` profile and ISP IQ file are tracked under
+`camera/`. Keep project changes in those tracked copies. The SDK directory is
+ignored by this repository. Before the first build replaces SDK files with
+project files, save the original SDK DTSI and defconfig as `.orig`. Run this
+once from the repository root:
 
 ```sh
 cp sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi \
@@ -135,23 +135,27 @@ The tracked inputs and the SDK paths they replace are:
 | `kernel/rv1103-luckfox-pico-ipc.dtsi` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi` |
 | `kernel/luckfox_rv1106_linux_defconfig` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig` |
 | `overlay/a-eye/` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/` |
+| `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` |
+| `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` |
 
 `camera/rkipc-imx415-720p.ini` is the project-owned 720p IMX415 profile for the
 `rkipc` application, adapted from the extracted Pico Zero profile.
 `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` is the matching ISP IQ
-tuning file. Both are needed for the tested IMX415 `rkipc` setup. The image
-build script does not currently install either file; the RTSP instructions
-below show how to copy them to the device.
+tuning file. Both are needed for the tested IMX415 `rkipc` setup. The root
+`build.sh` copies them into the SDK's selected Buildroot overlay, so they are
+included in the image at `/usr/share/rkipc-imx415-720p.ini` and
+`/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json`. Each build
+overwrites those SDK overlay copies with the tracked project files.
 
 Make changes in the project-owned files under `kernel/`, `overlay/`, and
-`camera/`. The root `build.sh` copies the kernel and overlay files into the SDK
-before building; copy the camera INI to the device using the RTSP instructions
-below. The stock Pico Mini BoardConfig already selects the init overlay, so no
-custom BoardConfig is needed. The tracked DTSI contains the SC3336 and IMX415
-nodes, the CSI-2 graph, and PWM0 LED setup. The root build script selects one
-supported camera in the SDK copy. SC3336 uses D-PHY input 0; IMX415 uses
-D-PHY input 3, matching the working RV1103 camera configuration. The defconfig
-enables `CONFIG_VIDEO_SC3336=m`, `CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
+`camera/`. The root `build.sh` copies the tracked kernel inputs, rootfs overlay,
+and camera configuration into the SDK before building. The stock Pico Mini
+BoardConfig already selects the init overlay, so no custom BoardConfig is
+needed. The tracked DTSI contains the SC3336 and IMX415 nodes, the CSI-2 graph,
+and PWM0 LED setup. The root build script selects one supported camera in the
+SDK copy. SC3336 uses D-PHY input 0; IMX415 uses D-PHY input 3, matching the
+working RV1103 camera configuration. The defconfig enables
+`CONFIG_VIDEO_SC3336=m`, `CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
 
 ## Building, flashing, and testing the image
 
@@ -172,8 +176,8 @@ IMX415 drivers. Choose the camera attached to the board for each build:
    Choose `RV1103_Luckfox_Pico_Mini`, `[1] SPI_NAND`, and `Buildroot`.
 3. Build the full image from the repository root, specifying the connected
    camera. The script copies the tracked project files into the SDK, selects
-   the camera in the SDK DTSI copy, builds all components, and packages
-   `update.img`:
+   the camera in the SDK DTSI copy, places the IMX415 INI and IQ JSON in the
+   rootfs overlay, builds all components, and packages `update.img`:
 
    ```sh
    ./build.sh sc3336
@@ -262,28 +266,34 @@ addresses must be unique. Verify that the route to the device uses this USB
 interface with `ip route get 172.32.0.93`, then check connectivity with
 `ping 172.32.0.93`.
 
-### View the RTSP stream
+### Start `rkipc` with the IMX415 files and view RTSP
 
 The `rkipc` application provides the RTSP server. The main stream is available
-at `/live/0` on port 554. With the stock camera configuration,
-`/etc/init.d/S21appinit` runs `/oem/usr/bin/RkLunch.sh` and starts `rkipc` using
-the selected stock INI. For an IMX415 build, the unmodified `RkLunch.sh` does
-not select the tracked IMX415 profile, so start `rkipc` manually with it:
+at `/live/0` on port 554. The normal boot sequence
+(`/etc/init.d/S21appinit` running `/oem/usr/bin/RkLunch.sh`) starts `rkipc`
+with a stock camera profile. For an IMX415 build, start it manually with the
+project files included in the image. The INI path is passed with `-c`; `-a`
+sets the directory containing the IMX415 IQ JSON. From the host, stop the
+stock `rkipc` process and launch the IMX415 instance in the background:
 
 ```sh
-adb push camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json \
-  /oem/usr/share/iqfiles/
-adb push camera/rkipc-imx415-720p.ini /userdata/rkipc-imx415.ini
 adb shell killall rkipc
-adb shell 'export LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib:$LD_LIBRARY_PATH; \
-  nohup /oem/usr/bin/rkipc -c /userdata/rkipc-imx415.ini \
-  -a /oem/usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &'
+adb shell 'nohup /oem/usr/bin/rkipc -c /usr/share/rkipc-imx415-720p.ini \
+  -a /usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &'
 ```
 
-The `-c` argument selects the INI profile. The `-a` argument points to the
-directory containing the IMX415 IQ JSON file. This manual start is not
-persistent across reboot. Check the RTSP port and play the stream from the
-host:
+The SDK's normal startup does not set `LD_LIBRARY_PATH`, so it should not be
+needed here. If `rkipc` exits with a shared-library loading error, retry with
+the OEM library directories added to the loader path:
+
+```sh
+adb shell 'export LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib:$LD_LIBRARY_PATH; \
+  nohup /oem/usr/bin/rkipc -c /usr/share/rkipc-imx415-720p.ini \
+  -a /usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &'
+```
+
+This manual start is not persistent across reboot; repeat it after rebooting.
+Check the RTSP port and play the stream from the host:
 
 ```sh
 nc -vz -w 3 172.32.0.93 554

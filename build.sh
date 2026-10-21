@@ -11,6 +11,9 @@ KERNEL_CONFIG_SOURCE="${ROOT_DIR}/kernel/luckfox_rv1106_linux_defconfig"
 KERNEL_CONFIG_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig"
 OVERLAY_SOURCE="${ROOT_DIR}/overlay/a-eye"
 OVERLAY_TARGET="${SDK_DIR}/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init"
+CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
+CAMERA_IQ_SOURCE="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
+CAMERA_FILES_TARGET="${OVERLAY_TARGET}/usr/share"
 
 if [[ "$#" -ne 1 ]]; then
     echo "Usage: $0 {sc3336|imx415}" >&2
@@ -38,6 +41,16 @@ fi
 
 if [[ ! -d "${OVERLAY_SOURCE}" ]]; then
     echo "Missing tracked rootfs overlay: ${OVERLAY_SOURCE}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${CAMERA_INI_SOURCE}" ]]; then
+    echo "Missing tracked IMX415 rkipc profile: ${CAMERA_INI_SOURCE}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${CAMERA_IQ_SOURCE}" ]]; then
+    echo "Missing tracked IMX415 IQ file: ${CAMERA_IQ_SOURCE}" >&2
     exit 1
 fi
 
@@ -69,6 +82,12 @@ cp -- "${KERNEL_CONFIG_SOURCE}" "${KERNEL_CONFIG_TARGET}"
 echo "Copying tracked rootfs overlay into the SDK"
 mkdir -p "${OVERLAY_TARGET}"
 cp -a -- "${OVERLAY_SOURCE}/." "${OVERLAY_TARGET}/"
+
+echo "Copying tracked IMX415 camera configuration into the SDK rootfs overlay"
+mkdir -p "${CAMERA_FILES_TARGET}/iqfiles"
+cp -a -- "${CAMERA_INI_SOURCE}" "${CAMERA_FILES_TARGET}/rkipc-imx415-720p.ini"
+cp -a -- "${CAMERA_IQ_SOURCE}" \
+    "${CAMERA_FILES_TARGET}/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 
 cd "${SDK_DIR}"
 
