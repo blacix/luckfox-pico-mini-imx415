@@ -6,11 +6,20 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 MODULE="${ROOT_DIR}/sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/modules/5.10.160/kernel/drivers/media/i2c/imx415.ko"
 LED_TEST="${ROOT_DIR}/overlay/a-eye/usr/bin/test-pwm-led.sh"
 INIT_SCRIPT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye"
+CAMERA_INIT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-cam"
+CAMERA_INI="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
+CAMERA_IQ="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 REMOTE_MODULE=/tmp/imx415.ko
 REMOTE_SCRIPT=/tmp/test-pwm-led.sh
 REMOTE_INIT=/tmp/S99a-eye
+REMOTE_CAMERA_INIT=/tmp/S99a-eye-cam
+REMOTE_CAMERA_INI=/tmp/rkipc-imx415-720p.ini
+REMOTE_CAMERA_IQ=/tmp/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 INSTALLED_SCRIPT=/usr/bin/test-pwm-led.sh
 INSTALLED_INIT=/etc/init.d/S99a-eye
+INSTALLED_CAMERA_INIT=/etc/init.d/S99a-eye-cam
+INSTALLED_CAMERA_INI=/usr/share/rkipc-imx415-720p.ini
+INSTALLED_CAMERA_IQ=/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 INSTALLED_MODULE=/oem/usr/ko/imx415.ko
 
 if [[ ! -f "${MODULE}" ]]; then
@@ -29,6 +38,21 @@ if [[ ! -f "${INIT_SCRIPT}" ]]; then
     exit 1
 fi
 
+if [[ ! -f "${CAMERA_INIT}" ]]; then
+    echo "Missing camera init script: ${CAMERA_INIT}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${CAMERA_INI}" ]]; then
+    echo "Missing camera INI file: ${CAMERA_INI}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${CAMERA_IQ}" ]]; then
+    echo "Missing camera IQ file: ${CAMERA_IQ}" >&2
+    exit 1
+fi
+
 adb get-state >/dev/null
 
 echo "Pushing IMX415 kernel module"
@@ -40,21 +64,45 @@ adb push "${LED_TEST}" "${REMOTE_SCRIPT}"
 echo "Pushing init script"
 adb push "${INIT_SCRIPT}" "${REMOTE_INIT}"
 
-echo "Installing LED test script and init script"
+echo "Pushing camera init script and configuration"
+adb push "${CAMERA_INIT}" "${REMOTE_CAMERA_INIT}"
+adb push "${CAMERA_INI}" "${REMOTE_CAMERA_INI}"
+adb push "${CAMERA_IQ}" "${REMOTE_CAMERA_IQ}"
+
+echo "Installing files and restarting the camera services"
 adb shell "
     test \"\$(id -u)\" = 0
+    if [ -x '${INSTALLED_CAMERA_INIT}' ]; then
+        '${INSTALLED_CAMERA_INIT}' stop
+    else
+        killall rkipc 2>/dev/null || true
+    fi
+    if grep -q '^imx415 ' /proc/modules; then
+        rmmod imx415
+    fi
     chmod 0755 '${REMOTE_SCRIPT}'
     mv '${REMOTE_SCRIPT}' '${INSTALLED_SCRIPT}'
     chmod 0755 '${REMOTE_INIT}'
     mv '${REMOTE_INIT}' '${INSTALLED_INIT}'
+    chmod 0755 '${REMOTE_CAMERA_INIT}'
+    mv '${REMOTE_CAMERA_INIT}' '${INSTALLED_CAMERA_INIT}'
+    mv '${REMOTE_CAMERA_INI}' '${INSTALLED_CAMERA_INI}'
+    mkdir -p /usr/share/iqfiles
+    mv '${REMOTE_CAMERA_IQ}' '${INSTALLED_CAMERA_IQ}'
     mkdir -p /oem/usr/ko
     mv '${REMOTE_MODULE}' '${INSTALLED_MODULE}'
+    insmod '${INSTALLED_MODULE}'
     '${INSTALLED_INIT}' restart
+    '${INSTALLED_CAMERA_INIT}' start
     test -x '${INSTALLED_SCRIPT}'
     test -x '${INSTALLED_INIT}'
+    test -x '${INSTALLED_CAMERA_INIT}'
+    test -f '${INSTALLED_CAMERA_INI}'
+    test -f '${INSTALLED_CAMERA_IQ}'
     grep '^imx415 ' /proc/modules
 "
 
 echo "Deployment complete"
 echo "Run on the device: ${INSTALLED_SCRIPT}"
 echo "Init script: ${INSTALLED_INIT}"
+echo "Camera service: ${INSTALLED_CAMERA_INIT}"

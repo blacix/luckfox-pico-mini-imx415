@@ -38,6 +38,7 @@ mode.
 ├── overlay/                     # Tracked rootfs overlay inputs
 │   └── a-eye/
 │       ├── etc/init.d/S99a-eye
+│       ├── etc/init.d/S99a-eye-cam
 │       └── usr/bin/test-pwm-led.sh
 └── sdk/                         # Local SDK and firmware tools; ignored by Git
     ├── Luckfox_Pico_Mini_Flash_250607/
@@ -90,26 +91,11 @@ firmware changes are flashed.
 
 ## Development objective
 
-The first practical milestone is:
-
-> A rebuilt firmware image boots, the IMX415 reports its correct sensor ID,
-> and a reduced two-lane mode produces frames through the RKCIF/V4L2 path.
-
-Work should proceed in this order:
-
-1. Preserve and verify the stock firmware recovery path.
-2. Confirm the exact IMX415 module, wiring, I²C address, clock, power rails,
-   and GPIO configuration.
-3. Build an unchanged SDK baseline for the target board.
-4. Enable and package the SC3336 and IMX415 kernel drivers.
-5. Select the attached camera and its matching device-tree endpoint at build
-   time.
-6. Validate sensor probing, media links, and conservative capture modes for
-   each camera.
-7. Add and validate an appropriate IMX415 IQ/tuning configuration.
-8. Integrate and test the complete application camera path.
-
-The stock SC3336 IQ file must not be treated as an IMX415 configuration.
+The project now has a full-image build path for either camera and an IMX415
+application configuration. The remaining work is target validation: confirm
+that the IMX415 service starts reliably after boot, capture frames through
+V4L2, and record stable capture and RTSP settings. The stock SC3336 IQ file
+must not be treated as an IMX415 configuration.
 
 ## Tracked project files and SDK synchronization
 
@@ -200,9 +186,10 @@ under `/oem/usr/ko/`, and the SDK startup sequence loads them during boot.
 After flashing, verify the selected driver with
 `lsmod | grep -E 'sc3336|imx415'`.
 
-`deploy.sh` remains useful for testing a newly built module without rebuilding
-and flashing the complete image. It copies the module to the same persistent
-`/oem/usr/ko/` location and restarts the init script.
+Use `deploy.sh` only when a changed module, camera configuration, or service
+needs to be tried on the running device without rebuilding and flashing the
+complete image. Device-tree, kernel configuration, or SDK build integration
+changes still require a full image build and flash.
 
 After the build, locate the generated modules and verify the kernel
 configuration:
@@ -220,26 +207,40 @@ CONFIG_VIDEO_SC3336=m
 CONFIG_LEDS_PWM=y
 ```
 
-## Deploying the driver and LED test script
+## Deploying changes for quick testing
 
-For module-only iteration after building, deploy the module and device-only LED
-test script from the repository root:
+After making a change that can be tested against the currently installed
+kernel and device tree, build the kernel module if it changed, connect the
+device with root ADB, then run this from the repository root. The script
+expects the module artifact to exist even when only a config or script changed;
+in that case it redeploys the existing module too.
 
 ```sh
 ./deploy.sh
 ```
 
-The script pushes `imx415.ko` to `/tmp/imx415.ko`, then uses the tracked
-`overlay/a-eye/usr/bin/test-pwm-led.sh` and
-`overlay/a-eye/etc/init.d/S99a-eye` files as the sources for the device-side
-installations `/usr/bin/test-pwm-led.sh` and `/etc/init.d/S99a-eye`. It stores
-`imx415.ko` in the persistent `/oem/usr/ko/` module directory. It then
-restarts `S99a-eye`, which starts the LED test script. The normal SDK startup
-sequence is expected to load `imx415.ko` from `/oem/usr/ko/` through
-`insmod_ko.sh`. `S99a-eye` also performs fallback loading with `insmod` if the
-module is not already loaded. The `S99` prefix includes the script in the
-device's normal init-script sequence. Deployment requires a connected device
-with a root ADB shell.
+For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
+tracked project files to the device:
+
+- `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
+- `overlay/a-eye/etc/init.d/S99a-eye` to `/etc/init.d/S99a-eye`;
+- `overlay/a-eye/etc/init.d/S99a-eye-cam` to `/etc/init.d/S99a-eye-cam`;
+- `camera/rkipc-imx415-720p.ini` to `/usr/share/rkipc-imx415-720p.ini`;
+- the camera IQ JSON to `/usr/share/iqfiles/`;
+- `imx415.ko` to `/oem/usr/ko/imx415.ko`.
+
+The script stops `rkipc`, unloads the currently loaded IMX415 module if
+present, installs and loads the new module, then restarts the LED and camera
+services. The camera service launches `rkipc` with the deployed INI and IQ
+directory. Deployment requires a connected device with a root ADB shell and a
+module built for the device's currently running kernel.
+
+This is an iteration shortcut, not a replacement for a firmware build. Use it
+for changes to the module binary, INI/IQ files, or deployed scripts when the
+running kernel and device tree already support the camera. Changes to the
+device tree, kernel configuration, or other build-time inputs require
+`./build.sh imx415` and flashing the resulting image. If nothing changed and
+you are not testing an update, there is no need to run `deploy.sh`.
 
 ## USB networking, RTSP streaming, and V4L2 capture
 
@@ -269,30 +270,31 @@ interface with `ip route get 172.32.0.93`, then check connectivity with
 ### Start `rkipc` with the IMX415 files and view RTSP
 
 The `rkipc` application provides the RTSP server. The main stream is available
-at `/live/0` on port 554. The normal boot sequence
-(`/etc/init.d/S21appinit` running `/oem/usr/bin/RkLunch.sh`) starts `rkipc`
-with a stock camera profile. For an IMX415 build, start it manually with the
-project files included in the image. The INI path is passed with `-c`; `-a`
-sets the directory containing the IMX415 IQ JSON. From the host, stop the
-stock `rkipc` process and launch the IMX415 instance in the background:
+at `/live/0` on port 554. The tracked `/etc/init.d/S99a-eye-cam` service stops
+the stock `rkipc` process and starts `/oem/usr/bin/rkipc` with the project
+IMX415 files. It passes `/usr/share/rkipc-imx415-720p.ini` with `-c` and
+`/usr/share/iqfiles` with `-a`. In the full image, the service is included in
+the boot init sequence for the IMX415 setup; after deploying changes with
+`./deploy.sh`, the script restarts it immediately. This service uses an
+IMX415-specific profile and should not replace the stock camera process in a
+SC3336 setup.
 
 ```sh
-adb shell killall rkipc
-adb shell 'nohup /oem/usr/bin/rkipc -c /usr/share/rkipc-imx415-720p.ini \
-  -a /usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &'
+adb shell /etc/init.d/S99a-eye-cam restart
 ```
 
-The SDK's normal startup does not set `LD_LIBRARY_PATH`, so it should not be
-needed here. If `rkipc` exits with a shared-library loading error, retry with
-the OEM library directories added to the loader path:
+Use the service to stop the camera process or restart it after boot:
 
 ```sh
-adb shell 'export LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib:$LD_LIBRARY_PATH; \
-  nohup /oem/usr/bin/rkipc -c /usr/share/rkipc-imx415-720p.ini \
-  -a /usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &'
+adb shell /etc/init.d/S99a-eye-cam stop
 ```
 
-This manual start is not persistent across reboot; repeat it after rebooting.
+The service writes output to `/tmp/rkipc.log` and sets
+`LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib` for `rkipc`, so its vendor libraries
+are found when it is launched by init without an interactive shell
+environment. If startup fails, inspect the log with
+`adb shell tail -n 80 /tmp/rkipc.log`.
+
 Check the RTSP port and play the stream from the host:
 
 ```sh
@@ -319,8 +321,9 @@ adb shell /etc/init.d/S21appinit start
 ```
 
 The stop action terminates `rkipc` and other application init scripts, so the
-RTSP stream is unavailable until it starts again. After stopping the stock
-stack on an IMX415 build, use the manual IMX415 start command above.
+RTSP stream is unavailable until it starts again. After starting the stock
+application stack on an IMX415 build, restart `S99a-eye-cam` to run the custom
+IMX415 configuration.
 
 ### Read back the SPI-NAND firmware
 
@@ -580,10 +583,10 @@ Flash it from the repository root with the local upgrade tool:
 ## Status
 
 The reproducible build, SC3336/IMX415 camera selection, kernel module
-packaging, PWM0 LED support, rootfs overlay, deployment script, and init-script
-workflow are in place. Final validation still requires confirming the IMX415
-reset and regulator wiring, then testing sensor probing, conservative two-lane
-frame capture, the appropriate IQ file, and the application camera path.
+packaging, PWM0 LED support, tracked IMX415 INI/IQ files, and custom `rkipc`
+service are in place. Remaining validation is listed in
+[implementation-plan.md](implementation-plan.md), including reliable camera
+service startup and the complete IMX415 capture path.
 
 See [camera.md](camera.md) and [implementation-plan.md](implementation-plan.md)
 for the detailed findings and plan.
