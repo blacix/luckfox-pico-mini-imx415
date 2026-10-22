@@ -23,28 +23,54 @@ through ADB from changes that require a complete image build and flash.
 
 ### Remaining work
 
-1. **Review the patched IMX415 driver and define the required sensor modes.**
-   Use the driver from `Luckfox_Pico_Zero_EMMC_250802_extract/` and compare
-   its mode table with the SDK's `imx415.c`. The extracted project contains a
-   compiled module rather than the patched source, so inspect its available
-   mode-table evidence as well as the SDK source. The current extraction report
-   lists three 2-lane modes: two 3864x2192 readouts and a 1284x720 readout; the
-   1932x1096 binned mode appears in the 4-lane table, not the 2-lane table.
+1. **Add a full-field Full HD sensor path, then scale to 720p in the
+   application.** The requirement is that the sensor/pipeline deliver a
+   full-field 1920x1080 image to the camera application, which resizes it to
+   1280x720 for the output stream. The 720p output must retain the full scene
+   field of view; do not meet the output size by selecting the sensor's narrow
+   1284x720 center-window mode or by cropping the Full HD input.
 
-   Resolve and document:
+   Findings from the extracted project:
 
-   - whether the current 720p stream uses the sensor's narrow 1284x720 window
-     or reads a wider sensor mode and crops/scales it downstream;
-   - what “2K” should mean for this project (for example, 2560x1440 or
-     2048x1080), and whether the desired Full HD and 2K outputs should retain
-     the full field of view;
-   - which sensor readout/binning modes, CSI-2 bandwidth, frame rates, and
-     downstream CIF/ISP crop or scale operations can meet those output goals.
+   - `extracted/imx415/_work/mode_report.txt` identifies three modes in the
+     extracted driver's 2-lane table: 3864x2192 RAW12, 1284x720 RAW12, and
+     3864x2192 RAW10. It does not list a 1920x1080 2-lane mode.
+   - The extracted project's `configuration_guide.md` identifies 1284x720 as
+     a center window with reduced field of view. Its tested alternative reads
+     3864x2192, then RKCIF crops to 3072x1728 before RKISP produces 1280x720;
+     that path is wider than the center window but still crops the sensor
+     image.
+   - The extracted module has a 1932x1096 binned mode in its 4-lane table,
+     not its 2-lane table. `instructions.md` proposes adding a 1920x1080
+     2x2-binned mode for 2 lanes, but that proposal is not evidence that its
+     register sequence or timing has been validated.
+   - The INI output dimensions configure application streams; they do not by
+     themselves select the sensor readout or guarantee a full-field path.
 
-   **Deliverable:** a mode table and a concrete driver-change specification
-   for Full HD and, if feasible, the selected 2K target. Do not change the
-   driver, device tree, or `rkipc` profiles until that specification is
-   agreed.
+   Work through these steps before changing the implementation:
+
+   - Compare the extracted module's mode-table evidence with the SDK driver
+     source and identify reusable register tables, mode timings, bit depth,
+     link frequency, and clock requirements. Validate any proposed binning
+     registers against a reliable source; do not copy the draft register
+     sequence without validation.
+   - Define and implement a 2-lane sensor mode that reads the full active
+     field into a roughly 1920x1080 image, if the sensor and RV1103 pipeline
+     support it. Verify that RKCIF/ISP selection rectangles cover that entire
+     image with no crop.
+   - Configure the camera application to consume that Full HD input and
+     resize it to a 1280x720 output. Verify the negotiated sensor, CIF, ISP,
+     and encoder dimensions separately; INI output settings alone are not
+     proof of the upstream mode.
+   - Compare captured frames against the full-field reference and measure
+     stable frame rate and frame errors.
+
+   **Deliverable:** a reviewed mode table, the validated driver mode and
+   pipeline changes, and a tested 1280x720 stream whose framing matches the
+   full-field 1920x1080 input.
+
+   2K is outside this project's goal. Keep the work focused on the full-field
+   Full HD sensor input and its crop-free 1280x720 application output.
 
 2. **Keep camera startup aligned with build selection.** `S99a-eye-cam` uses
    an IMX415-specific profile. Ensure it only replaces the stock `rkipc`
