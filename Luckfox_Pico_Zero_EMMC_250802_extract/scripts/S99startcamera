@@ -1,0 +1,54 @@
+#!/bin/sh
+# S99startcamera -- OPTIONAL boot hook that applies /userdata/start_camera.sh on every boot.
+#
+# Not installed by default: configuration_guide.md step 6 stops at "run the wrapper manually
+# after boot", so this file ships inert in /userdata. To make the native-720p + 2 Mbps CBR
+# stream come up by itself, install it into rootfs's init sequence (writable UBIFS, /oem is
+# not touched):
+#
+#	cp /userdata/S99startcamera /etc/init.d/S99startcamera
+#	chmod +x /etc/init.d/S99startcamera
+#	reboot
+#
+# and to go back to the stock boot pipeline:
+#
+#	rm /etc/init.d/S99startcamera
+#	/userdata/S99startcamera stop      # or just reboot
+#
+# It runs last (S99) so the stock rkipc from S21appinit is already up; the wrapper kills it,
+# re-times the sensor and restarts rkipc with the custom profile -- a ~3 s gap in video at
+# boot, which is the whole cost of not editing /oem/usr/bin/RkLunch.sh.
+
+[ -f /etc/profile.d/RkEnv.sh ] && source /etc/profile.d/RkEnv.sh
+
+case $1 in
+	start)
+		if [ -x /userdata/start_camera.sh ]; then
+			/userdata/start_camera.sh
+		else
+			echo "S99startcamera: /userdata/start_camera.sh missing, leaving stock pipeline"
+		fi
+		;;
+	stop)
+		# Undo: drop the custom rkipc and restore the factory profile the way RkLunch.sh
+		# would have left it, so the board is back to the stock pipeline without a reboot.
+		killall -9 rkipc 2>/dev/null
+		sleep 2
+		if [ -f /tmp/rkipc-factory-config.ini ]; then
+			cp -f /tmp/rkipc-factory-config.ini /userdata/rkipc.ini
+		fi
+		# Detached for the same reason start_camera.sh detaches: this branch is normally run
+		# over ssh, and a backgrounded-but-not-detached rkipc would be killed by SIGHUP the
+		# moment that ssh session closed, leaving the board with no stream at all.
+		if command -v setsid >/dev/null 2>&1; then
+			nohup setsid rkipc -a /oem/usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &
+		else
+			nohup rkipc -a /oem/usr/share/iqfiles >/tmp/rkipc.log 2>&1 </dev/null &
+		fi
+		echo "S99startcamera: stock pipeline restored; remove this file to keep it that way."
+		;;
+	*)
+		echo "usage: $0 {start|stop}"
+		exit 1
+		;;
+esac

@@ -1,0 +1,29 @@
+
+== supported_modes  section .rodata offset=0x104 size=720 bytes
+   20 pointer slots, struct stride 4 bytes -> 180 array entries
+     +40  imx415_global_10bit_3864x2192_regs
+     +44  imx415_linear_10bit_3864x2192_594M_regs
+     +112 imx415_global_10bit_3864x2192_regs
+     +116 imx415_linear_10bit_3864x2192_891M_regs
+     +184 imx415_global_10bit_3864x2192_regs
+     +188 imx415_hdr2_10bit_3864x2192_1485M_regs
+     +256 imx415_global_10bit_3864x2192_regs
+     +260 imx415_hdr3_10bit_3864x2192_1485M_regs
+     +328 imx415_global_10bit_3864x2192_regs
+     +332 imx415_hdr3_10bit_3864x2192_1782M_regs
+     +400 imx415_global_12bit_3864x2192_regs
+     +404 imx415_linear_12bit_3864x2192_891M_regs
+     +472 imx415_global_12bit_3864x2192_regs
+     +476 imx415_hdr2_12bit_3864x2192_1782M_regs
+     +544 imx415_global_12bit_3864x2192_regs
+     +548 imx415_hdr3_12bit_3864x2192_1782M_regs
+     +616 imx415_global_12bit_3864x2192_regs
+     +620 imx415_linear_12bit_1932x1096_594M_regs
+     +688 imx415_global_12bit_3864x2192_regs
+     +692 imx415_hdr2_12bit_1932x1096_891M_regs
+
+== supported_modes_2lane  section .rodata offset=0x3d4 size=216 bytes
+   3 pointer slots, struct stride 72 bytes -> 3 array entries
+     +44  imx415_linear_12bit_3864x2192_891M_regs_2lane
+     +116 imx415_linear_12bit_1284x720_2376M_regs_2lane
+     +188 imx415_linear_10bit_3864x2192_891M_regs_2lane

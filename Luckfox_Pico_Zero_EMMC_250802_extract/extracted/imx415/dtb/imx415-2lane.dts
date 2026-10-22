@@ -1,0 +1,103 @@
+/*
+ * imx415-2lane.dts -- add a Sony IMX415 to OUR custom RV1103 board, in 2 MIPI lanes.
+ *
+ * Why this file exists
+ *   Our board's live device tree (taken from /sys/firmware/fdt, see ../_work/target_fdt.dtb)
+ *   has NO imx415 node at all -- it only declares sc3336@30, sc4336@30 and sc530ai@30 on
+ *   i2c@ff470000. So loading imx415.ko alone can never probe anything: the driver matches on
+ *   the "sony,imx415" compatible string, which must come from the device tree.
+ *
+ * Where each property came from
+ *   - Sensor node skeleton, reg 0x37, reset pin, and the module/lens name strings are taken
+ *     from the Luckfox Pico Zero reference DTB (imx415@37 under i2c@ff470000), which is the
+ *     firmware we extracted imx415.ko and the IQ file from.
+ *   - Everything board-specific (xvclk phandle, pinctrl group, dphy endpoint numbering) is
+ *     taken from OUR OWN sc3336 node, because the base DT differs between the Pico Zero
+ *     (RV1106) and our Pico Plus (RV1103) image:
+ *       * Pico Zero fed IMX415 xvclk from an on-board 37.125 MHz oscillator
+ *         (/out-osc-imx415, fixed-clock 0x2367b88). Our DT has no such node; our sensors take
+ *         xclk from the CRU: clocks = <&cru 0xa5>, routed out by pinctrl /pinctrl/mipi/
+ *         mipi-refclk-out0. See the WARNING below.
+ *       * Both boards use gpio@ff550000 pin 21 for the camera reset/pwdn line, so the pin
+ *         number carries over unchanged.
+ *   - data-lanes: the reference DTB says <1 2 3 4>. The RV1103 D-PHY has only 2 data lanes,
+ *     and imx415.ko prints "detect imx415 lane %d" and installs supported_modes_2lane when
+ *     it parses 2 lanes -- hence <0x01 0x02> here, on BOTH sides of the link.
+ *
+ * Literal phandles <0x02> / <0x31> / <0x32> are the base-DT handles of
+ * clock-controller@ff3a0000, pinctrl/gpio@ff550000 and pinctrl/mipi/mipi-refclk-out0.
+ * Our base DT carries no __symbols__ node, so label references into it are not available and
+ * the numeric handles are written out directly; the overlay resolver only renumbers phandles
+ * created *inside* this overlay (the two endpoints below), and leaves references to existing
+ * base nodes alone, which is what makes this work. Verify with:
+ *     dtc -I dtb -O dts /sys/firmware/fdt 2>/dev/null | grep -n 'phandle = <0x31>'
+ *
+ * WARNING -- clock frequency, unresolved hardware question
+ *   imx415.ko calls clk_set_rate()/clk_get_rate() on xvclk and complains "xvclk mismatched".
+ *   The IMX415 is driven from 37.125 MHz on the Luckfox reference board. Confirm what xclk
+ *   frequency our CRU output actually delivers on this pin before trusting a stream; if it is
+ *   24 or 27 MHz, either re-route the CRU output to 37.125 MHz or add a fixed-clock node and
+ *   feed xvclk from an external oscillator, exactly as the Pico Zero DT does.
+ *
+ * Apply at runtime (base DT has configfs overlays enabled and /sys/kernel/config is mounted):
+ *     insmod /oem/usr/ko/imx415.ko            # or from /tmp first
+ *     mkdir /sys/kernel/config/device-tree/overlays/imx415
+ *     cat imx415-2lane.dtbo > /sys/kernel/config/device-tree/overlays/imx415/dtbo
+ * Remove again with:  rmdir /sys/kernel/config/device-tree/overlays/imx415
+ * Build:  dtc -@ -I dts -O dtb -o imx415-2lane.dtbo imx415-2lane.dts
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		/* Give the IMX415 its own endpoint on the D-PHY. Our base DT already uses
+		 * endpoint@0/1/2 on this port for sc3336/sc4336/sc530ai, so @3 is the free slot.
+		 * data-lanes must agree with the sensor side. */
+		target-path = "/csi2-dphy0/ports/port@0";
+		__overlay__ {
+			/* Re-stated so the overlay validates on its own; these are identical to
+			 * the values the base port@0 already carries, so the merge is a no-op. */
+			#address-cells = <0x01>;
+			#size-cells = <0x00>;
+
+			imx415_dphy_ep: endpoint@3 {
+				reg = <0x03>;
+				data-lanes = <0x01 0x02>;
+			};
+		};
+	};
+
+	fragment@1 {
+		target-path = "/i2c@ff470000";	/* == /dev/i2c-4, the camera bus */
+		__overlay__ {
+			imx415: imx415@37 {
+				compatible = "sony,imx415";
+				status = "okay";
+				reg = <0x37>;			/* 7-bit I2C address of the Luckfox module */
+				clocks = <0x02 0xa5>;	/* CRU camera xclk, as our sc3336 uses */
+				clock-names = "xvclk";
+				reset-gpios = <0x31 0x15 0x01>;	/* gpio@ff550000 pin 21, active low */
+				pinctrl-names = "default";
+				pinctrl-0 = <0x32>;		/* mipi-refclk-out0: puts xclk on the FPC */
+
+				/* These two strings are how rkaiq finds the tuning file: it looks for
+				 * <driver-name>_<camera-module-name>_<lens-name>.json, i.e.
+				 * imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json. Do not "tidy" them --
+				 * a mismatch silently falls back to no tuning / wrong defaults. */
+				rockchip,camera-module-index = <0x00>;
+				rockchip,camera-module-facing = "back";
+				rockchip,camera-module-name = "CMK-OT2022-PX1";
+				rockchip,camera-module-lens-name = "IR0147-36IRC-8M-F20";
+
+				port {
+					imx415_out: endpoint {
+						remote-endpoint = <&imx415_dphy_ep>;
+						data-lanes = <0x01 0x02>;	/* RV1103: 2 lanes, not 4 */
+					};
+				};
+			};
+		};
+	};
+};

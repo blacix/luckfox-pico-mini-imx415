@@ -1,0 +1,31 @@
+== ko/imx415.ko
+   ELF32 ARM(32-bit), little endian, REL relocatable, 41 section headers
+   sections: .note.gnu.build-id, .note.Linux, .text, .rel.text, .text.unlikely, .rel.text.unlikely, .init.text, .rel.init.text, .exit.text, .rel.exit.text, .ARM.extab, .ARM.exidx, .rel.ARM.exidx, .ARM.extab.text.unlikely, .ARM.exidx.text.unlikely, .rel.ARM.exidx.text.unlikely, .ARM.extab.init.text, .ARM.exidx.init.text, .rel.ARM.exidx.init.text, .ARM.extab.exit.text, .ARM.exidx.exit.text, .rel.ARM.exidx.exit.text, .rodata, .rel.rodata, .modinfo, .rodata.str1.1, .data, .rel.data, .gnu.linkonce.this_module, .rel.gnu.linkonce.this_module, .plt, .init.plt, .bss, .note.GNU-stack, .comment, .note.GNU-stack, .ARM.attributes, .symtab, .strtab, .shstrtab
+   >>> FOUND .modinfo  size=185 bytes (~3 pinned symbols)
+   >>> FOUND .note.gnu.build-id  size=36 bytes (~0 pinned symbols)
+   >>> NO __versions section: this kernel was built WITHOUT CONFIG_MODVERSIONS
+   .modinfo: description=Sony imx415 sensor driver
+   .modinfo: depends=
+   .modinfo: name=imx415
+   .modinfo: vermagic=5.10.160 mod_unload ARMv7 thumb2 p2v8 
+== _work/pzero_ko/mis5001.ko
+   ELF32 ARM(32-bit), little endian, REL relocatable, 41 section headers
+   sections: .note.gnu.build-id, .note.Linux, .text, .rel.text, .text.unlikely, .rel.text.unlikely, .init.text, .rel.init.text, .exit.text, .rel.exit.text, .ARM.extab, .ARM.exidx, .rel.ARM.exidx, .ARM.extab.text.unlikely, .ARM.exidx.text.unlikely, .rel.ARM.exidx.text.unlikely, .ARM.extab.init.text, .ARM.exidx.init.text, .rel.ARM.exidx.init.text, .ARM.extab.exit.text, .ARM.exidx.exit.text, .rel.ARM.exidx.exit.text, .rodata, .rel.rodata, .modinfo, .rodata.str1.1, .data, .rel.data, .gnu.linkonce.this_module, .rel.gnu.linkonce.this_module, .plt, .init.plt, .bss, .note.GNU-stack, .comment, .note.GNU-stack, .ARM.attributes, .symtab, .strtab, .shstrtab
+   >>> FOUND .modinfo  size=216 bytes (~3 pinned symbols)
+   >>> FOUND .note.gnu.build-id  size=36 bytes (~0 pinned symbols)
+   >>> NO __versions section: this kernel was built WITHOUT CONFIG_MODVERSIONS
+   .modinfo: description=chengdu image design mis5001 sensor driver
+   .modinfo: depends=
+   .modinfo: name=mis5001
+   .modinfo: vermagic=5.10.160 mod_unload ARMv7 thumb2 p2v8 
+== _work/pzero_ko/rockit.ko
+   ELF32 ARM(32-bit), little endian, REL relocatable, 47 section headers
+   sections: .note.gnu.build-id, .note.Linux, .text, .rel.text, .text.unlikely, .rel.text.unlikely, .init.text, .rel.init.text, .exit.text, .rel.exit.text, __ksymtab, .rel__ksymtab, __ksymtab_gpl, .rel__ksymtab_gpl, .rodata, .rel.rodata, __ksymtab_strings, .rodata.str1.1, .modinfo, .ARM.extab.text.unlikely, .ARM.exidx.text.unlikely, .rel.ARM.exidx.text.unlikely, .ARM.extab.init.text, .ARM.exidx.init.text, .rel.ARM.exidx.init.text, .ARM.extab.exit.text, .ARM.exidx.exit.text, .rel.ARM.exidx.exit.text, __param, .rel__param, .ARM.extab, .data, .rel.data, .gnu.linkonce.this_module, .rel.gnu.linkonce.this_module, .ARM.exidx, .rel.ARM.exidx, .plt, .init.plt, .bss, .note.GNU-stack, .note.GNU-stack, .ARM.attributes, .symtab, .strtab, .shstrtab
+   >>> FOUND .modinfo  size=519 bytes (~8 pinned symbols)
+   >>> FOUND .note.gnu.build-id  size=36 bytes (~0 pinned symbols)
+   >>> NO __versions section: this kernel was built WITHOUT CONFIG_MODVERSIONS
+   .modinfo: author=Rockchip
+   .modinfo: author=Rockchip
+   .modinfo: depends=video_rkisp,venc_demo,rga3,video_rkcif
+   .modinfo: name=rockit
+   .modinfo: vermagic=5.10.160 mod_unload ARMv7 thumb2 p2v8 
