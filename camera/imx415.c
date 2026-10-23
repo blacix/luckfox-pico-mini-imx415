@@ -67,6 +67,7 @@
 #define MIPI_FREQ_446M			446000000
 #define MIPI_FREQ_743M			743000000
 #define MIPI_FREQ_297M			297000000
+#define MIPI_FREQ_445_5M		445500000
 
 #define IMX415_4LANES			4
 #define IMX415_2LANES			2
@@ -197,6 +198,7 @@ struct imx415_mode {
 	struct v4l2_fract max_fps;
 	u32 hts_def;
 	u32 vts_def;
+	u32 vts_min;
 	u32 exp_def;
 	u32 mipi_freq_idx;
 	u32 bpp;
@@ -805,6 +807,22 @@ static __maybe_unused const struct regval imx415_hdr2_12bit_1932x1096_891M_regs[
  * All-pixel
  */
 static __maybe_unused const struct regval imx415_linear_10bit_3864x2192_891M_regs_2lane[] = {
+	{0x301C, 0x00},
+	{0x3020, 0x00},
+	{0x3021, 0x00},
+	{0x3022, 0x00},
+	{0x3024, 0xCA},
+	{0x3025, 0x08},
+	{0x3026, 0x00},
+	{0x302C, 0x00},
+	{0x302D, 0x00},
+	{0x3031, 0x00},
+	{0x3032, 0x00},
+	{0x30D9, 0x06},
+	{0x30DA, 0x02},
+	{0x3701, 0x03},
+	{0x3119, 0x00},
+	{0x311B, 0x00},
 	{0x3008, 0x5D},
 	{0x300A, 0x42},
 	{0x3028, 0x98},
@@ -951,6 +969,22 @@ static __maybe_unused const struct regval imx415_linear_10bit_3864x2192_891M_reg
  * All-pixel
  */
 static __maybe_unused const struct regval imx415_linear_12bit_3864x2192_891M_regs_2lane[] = {
+	{0x301C, 0x00},
+	{0x3020, 0x00},
+	{0x3021, 0x00},
+	{0x3022, 0x00},
+	{0x3024, 0xCA},
+	{0x3025, 0x08},
+	{0x3026, 0x00},
+	{0x302C, 0x00},
+	{0x302D, 0x00},
+	{0x3031, 0x01},
+	{0x3032, 0x01},
+	{0x30D9, 0x06},
+	{0x30DA, 0x02},
+	{0x3701, 0x03},
+	{0x3119, 0x00},
+	{0x311B, 0x00},
 	{0x3008, 0x5D},
 	{0x300A, 0x42},
 	{0x3028, 0x98},
@@ -1086,15 +1120,187 @@ static __maybe_unused const struct regval imx415_linear_12bit_3864x2192_891M_reg
 
 /*
  * Xclk 27Mhz
- * 90.059fps
+ * 25fps
  * CSI-2_2lane
  * AD:10bit Output:12bit
- * 2376Mbps
+ * 445.5Mbps per lane
  * Master Mode
- * Time 9.999ms Gain:6dB
- * 2568x1440 2/2-line binning & Window cropping
+ * 1H = 1100 clocks, VMAX = 2700
+ * 1944x1097 2/2-line binning, full field of view
  */
+static const struct regval imx415_linear_12bit_1944x1097_445M_regs_2lane[] = {
+	{0x3000, 0x01},
+	{0x3002, 0x01},
+	{0x3008, 0x5D},
+	{0x300a, 0x42},
+	{0x301c, 0x00},
+	{0x3020, 0x01},
+	{0x3021, 0x01},
+	{0x3022, 0x01},
+	{0x3024, 0x8C},
+	{0x3025, 0x0A},
+	{0x3026, 0x00},
+	{0x3028, 0x4C},
+	{0x3029, 0x04},
+	{0x302c, 0x00},
+	{0x302d, 0x00},
+	{0x3031, 0x00},
+	{0x3032, 0x01},
+	{0x3033, 0x05},
+	{0x3050, 0x08},
+	{0x3051, 0x00},
+	{0x3052, 0x00},
+	{0x3090, 0x14},
+	{0x30c1, 0x00},
+	{0x30cf, 0x00},
+	{0x30d9, 0x02},
+	{0x30da, 0x01},
+	{0x3115, 0x00},
+	{0x3116, 0x23},
+	{0x3118, 0xC6},
+	{0x3119, 0x00},
+	{0x311a, 0xE7},
+	{0x311b, 0x00},
+	{0x311e, 0x23},
+	{0x3260, 0x01},
+	{0x32d4, 0x21},
+	{0x32ec, 0xA1},
+	{0x344c, 0x2B},
+	{0x344d, 0x01},
+	{0x344e, 0xED},
+	{0x344f, 0x01},
+	{0x3450, 0xF6},
+	{0x3451, 0x02},
+	{0x3452, 0x7F},
+	{0x3453, 0x03},
+	{0x358a, 0x04},
+	{0x35a1, 0x02},
+	{0x35ec, 0x27},
+	{0x35ee, 0x8D},
+	{0x35f0, 0x8D},
+	{0x35f2, 0x29},
+	{0x36bc, 0x0C},
+	{0x36cc, 0x53},
+	{0x36cd, 0x00},
+	{0x36ce, 0x3C},
+	{0x36d0, 0x8C},
+	{0x36d1, 0x00},
+	{0x36d2, 0x71},
+	{0x36d4, 0x3C},
+	{0x36d6, 0x53},
+	{0x36d7, 0x00},
+	{0x36d8, 0x71},
+	{0x36da, 0x8C},
+	{0x36db, 0x00},
+	{0x3701, 0x00},
+	{0x3720, 0x00},
+	{0x3724, 0x02},
+	{0x3726, 0x02},
+	{0x3732, 0x02},
+	{0x3734, 0x03},
+	{0x3736, 0x03},
+	{0x3742, 0x03},
+	{0x3862, 0xE0},
+	{0x38cc, 0x30},
+	{0x38cd, 0x2F},
+	{0x395c, 0x0C},
+	{0x39a4, 0x07},
+	{0x39a8, 0x32},
+	{0x39aa, 0x32},
+	{0x39ac, 0x32},
+	{0x39ae, 0x32},
+	{0x39b0, 0x32},
+	{0x39b2, 0x2F},
+	{0x39b4, 0x2D},
+	{0x39b6, 0x28},
+	{0x39b8, 0x30},
+	{0x39ba, 0x30},
+	{0x39bc, 0x30},
+	{0x39be, 0x30},
+	{0x39c0, 0x30},
+	{0x39c2, 0x2E},
+	{0x39c4, 0x2B},
+	{0x39c6, 0x25},
+	{0x3a42, 0xD1},
+	{0x3a4c, 0x77},
+	{0x3ae0, 0x02},
+	{0x3aec, 0x0C},
+	{0x3b00, 0x2E},
+	{0x3b06, 0x29},
+	{0x3b98, 0x25},
+	{0x3b99, 0x21},
+	{0x3b9b, 0x13},
+	{0x3b9c, 0x13},
+	{0x3b9d, 0x13},
+	{0x3b9e, 0x13},
+	{0x3ba1, 0x00},
+	{0x3ba2, 0x06},
+	{0x3ba3, 0x0B},
+	{0x3ba4, 0x10},
+	{0x3ba5, 0x14},
+	{0x3ba6, 0x18},
+	{0x3ba7, 0x1A},
+	{0x3ba8, 0x1A},
+	{0x3ba9, 0x1A},
+	{0x3bac, 0xED},
+	{0x3bad, 0x01},
+	{0x3bae, 0xF6},
+	{0x3baf, 0x02},
+	{0x3bb0, 0xA2},
+	{0x3bb1, 0x03},
+	{0x3bb2, 0xE0},
+	{0x3bb3, 0x03},
+	{0x3bb4, 0xE0},
+	{0x3bb5, 0x03},
+	{0x3bb6, 0xE0},
+	{0x3bb7, 0x03},
+	{0x3bb8, 0xE0},
+	{0x3bba, 0xE0},
+	{0x3bbc, 0xDA},
+	{0x3bbe, 0x88},
+	{0x3bc0, 0x44},
+	{0x3bc2, 0x7B},
+	{0x3bc4, 0xA2},
+	{0x3bc8, 0xBD},
+	{0x3bca, 0xBD},
+	{0x4001, 0x01},
+	{0x4004, 0xC0},
+	{0x4005, 0x06},
+	{0x400c, 0x00},
+	{0x4018, 0x7F},
+	{0x4019, 0x00},
+	{0x401a, 0x37},
+	{0x401b, 0x00},
+	{0x401c, 0x37},
+	{0x401d, 0x00},
+	{0x401e, 0xF7},
+	{0x401f, 0x00},
+	{0x4020, 0x3F},
+	{0x4021, 0x00},
+	{0x4022, 0x6F},
+	{0x4023, 0x00},
+	{0x4024, 0x3F},
+	{0x4025, 0x00},
+	{0x4026, 0x5F},
+	{0x4027, 0x00},
+	{0x4028, 0x2F},
+	{0x4029, 0x00},
+	{0x4074, 0x01},
+	{0x3002, 0x00},
+	{REG_DELAY, 0x1E},
+	{REG_NULL, 0x00},
+};
+
+/* 1284x720 output mode using binned and window-cropped sensor readout. */
 static __maybe_unused const struct regval imx415_linear_12bit_1284x720_2376M_regs_2lane[] = {
+	{0x3026, 0x00},
+	{0x302C, 0x00},
+	{0x302D, 0x00},
+	{0x3032, 0x01},
+	{0x30CF, 0x00},
+	{0x3701, 0x00},
+	{0x400C, 0x01},
+	{0x4074, 0x00},
 	{0x3008, 0x5D},
 	{0x300A, 0x42},
 	{0x301C, 0x04},
@@ -1499,6 +1705,27 @@ static const struct imx415_mode supported_modes[] = {
 
 static const struct imx415_mode supported_modes_2lane[] = {
 	{
+		/* Binned full-FOV readout; downstream ISP crops to 1920x1080. */
+		.bus_fmt = MEDIA_BUS_FMT_SGBRG12_1X12,
+		.width = 1944,
+		.height = 1097,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 250000,
+		},
+		.exp_def = 2700 - 8,
+		.hts_def = 1100 * 2,
+		.vts_def = 2700,
+		.vts_min = 2700,
+		.global_reg_list = NULL,
+		.reg_list = imx415_linear_12bit_1944x1097_445M_regs_2lane,
+		.hdr_mode = NO_HDR,
+		.mipi_freq_idx = 5,
+		.bpp = 12,
+		.vc[PAD0] = V4L2_MBUS_CSI2_CHANNEL_0,
+		.xvclk = IMX415_XVCLK_FREQ_27M,
+	},
+	{
 		/* 1H period = (1100 clock) = (1100 * 1 / 74.25MHz) */
 		.bus_fmt = MEDIA_BUS_FMT_SGBRG12_1X12,
 		.width = 3864,
@@ -1566,6 +1793,7 @@ static const s64 link_freq_items[] = {
 	MIPI_FREQ_743M,
 	MIPI_FREQ_891M,
 	MIPI_FREQ_1188M,
+	MIPI_FREQ_445_5M,
 };
 
 /* Write registers up to 4 at a time */
@@ -1728,8 +1956,11 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 		__v4l2_ctrl_modify_range(imx415->hblank, h_blank,
 					 h_blank, 1, h_blank);
 		vblank_def = mode->vts_def - mode->height;
-		/* VMAX >= (PIX_VWIDTH / 2) + 46 = height + 46 */
-		vblank_min = (mode->height + 46) - mode->height;
+		vblank_min = mode->vts_min ? mode->vts_min - mode->height :
+			(mode->height + 46) - mode->height;
+		__v4l2_ctrl_modify_range(imx415->exposure, IMX415_EXPOSURE_MIN,
+					 mode->vts_def - 8,
+					 IMX415_EXPOSURE_STEP, mode->exp_def);
 		__v4l2_ctrl_modify_range(imx415->vblank, vblank_min,
 					 IMX415_VTS_MAX - mode->height,
 					 1, vblank_def);
@@ -1817,8 +2048,16 @@ static int imx415_g_frame_interval(struct v4l2_subdev *sd,
 {
 	struct imx415 *imx415 = to_imx415(sd);
 	const struct imx415_mode *mode = imx415->cur_mode;
+	u8 lanes = imx415->bus_cfg.bus.mipi_csi2.num_data_lanes;
 
-	fi->interval = mode->max_fps;
+	if (mode->vts_min) {
+		fi->interval.numerator = imx415->cur_vts;
+		fi->interval.denominator =
+			((u32)link_freq_items[mode->mipi_freq_idx] / mode->bpp *
+			 2 * lanes) / mode->hts_def;
+	} else {
+		fi->interval = mode->max_fps;
+	}
 
 	return 0;
 }
@@ -2342,9 +2581,14 @@ static long imx415_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 			h = mode->vts_def - mode->height;
 			mutex_lock(&imx415->mutex);
 			__v4l2_ctrl_modify_range(imx415->hblank, w, w, 1, w);
-			__v4l2_ctrl_modify_range(imx415->vblank, h,
+			__v4l2_ctrl_modify_range(imx415->exposure,
+				IMX415_EXPOSURE_MIN, mode->vts_def - 8,
+				IMX415_EXPOSURE_STEP, mode->exp_def);
+			__v4l2_ctrl_modify_range(imx415->vblank,
+				mode->vts_min ? mode->vts_min - mode->height : h,
 				IMX415_VTS_MAX - mode->height,
 				1, h);
+			__v4l2_ctrl_s_ctrl(imx415->vblank, h);
 			__v4l2_ctrl_s_ctrl(imx415->link_freq, mode->mipi_freq_idx);
 			pixel_rate = (u32)link_freq_items[mode->mipi_freq_idx] /
 				mode->bpp * 2 * lanes;
@@ -2540,9 +2784,12 @@ static int __imx415_start_stream(struct imx415 *imx415)
 	int ret;
 
 	if (!imx415->is_thunderboot) {
-		ret = imx415_write_array(imx415->client, imx415->cur_mode->global_reg_list);
-		if (ret)
-			return ret;
+		if (imx415->cur_mode->global_reg_list) {
+			ret = imx415_write_array(imx415->client,
+						 imx415->cur_mode->global_reg_list);
+			if (ret)
+				return ret;
+		}
 		ret = imx415_write_array(imx415->client, imx415->cur_mode->reg_list);
 		if (ret)
 			return ret;
@@ -3056,7 +3303,7 @@ static int imx415_initialize_controls(struct imx415 *imx415)
 {
 	const struct imx415_mode *mode;
 	struct v4l2_ctrl_handler *handler;
-	s64 exposure_max, vblank_def;
+	s64 exposure_max, vblank_def, vblank_min;
 	u64 pixel_rate;
 	u64 max_pixel_rate;
 	u32 h_blank;
@@ -3090,8 +3337,9 @@ static int imx415_initialize_controls(struct imx415 *imx415)
 		imx415->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
 	vblank_def = mode->vts_def - mode->height;
+	vblank_min = mode->vts_min ? mode->vts_min - mode->height : vblank_def;
 	imx415->vblank = v4l2_ctrl_new_std(handler, &imx415_ctrl_ops,
-				V4L2_CID_VBLANK, vblank_def,
+				V4L2_CID_VBLANK, vblank_min,
 				IMX415_VTS_MAX - mode->height,
 				1, vblank_def);
 	imx415->cur_vts = mode->vts_def;
