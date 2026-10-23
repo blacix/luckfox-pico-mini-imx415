@@ -1,2 +1,4 @@
 # Local Luckfox SDK, firmware tools, and build artifacts
 /sdk/
+/Luckfox_Pico_Zero_EMMC_250802_extract/image
+/images
