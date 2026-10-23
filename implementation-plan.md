@@ -46,8 +46,11 @@ through ADB from changes that require a complete image build and flash.
 
    Select 27 MHz XVCLK and 891 Mbps per lane, matching the existing working
    two-lane RAW12 clock/link setup. Use 10-bit ADC conversion with RAW12
-   transmission, as specified for binning. The proposed 25 fps timing is
-   derived from Sony's limits, not a hardware-tested preset:
+   transmission, as specified for binning. The mode supports a proposed
+   maximum of 25 fps, derived from Sony's limits rather than a hardware-tested
+   preset. Configure the normal operating profile for 20 fps to match the
+   sensor timing observed on the current device; this does not lower the
+   driver's 25 fps capability:
 
    | Parameter | Implementation value |
    | --- | --- |
@@ -62,7 +65,7 @@ through ADB from changes that require a complete image build and flash.
    | Frame rate | 74250000 / (1100 × 2700) = 25 fps |
    | Driver pixel rate / HTS | 148500000 / 2200 |
    | HBLANK / default VBLANK | 256 / 1603 |
-   | Default and minimum permitted VTS | 2700 (policy caps this mode at 25 fps) |
+   | Default and minimum permitted VTS | 2700 (driver mode ceiling: 25 fps) |
    | Default exposure / maximum at default VTS | 2692 lines, leaving SHR0 = 8 |
 
    HMAX 1100 exceeds the documented two-lane binned minimum of 1024;
@@ -207,16 +210,12 @@ through ADB from changes that require a complete image build and flash.
    after rkipc starts; if AIQ changes it, fail validation and record the
    override rather than claiming the mode was selected.
 
-   **5. Proposed INI change and IQ handling**
+   **5. INI frame rate and IQ handling**
 
-   For the selected 25 fps target, propose changing only
-   `[isp.0.adjustment] fps = 20` to `fps = 25` in
-   `camera/rkipc-imx415-720p.ini`. The existing main-stream source and
-   destination frame rates are already 25; aligning them avoids the ISP
-   requesting a slower capture rate. The other scenario already requests
-   25 fps. This INI choice is separate from adding Full HD resolution;
-   retaining 20 fps remains a valid lower-load configuration, but would
-   not satisfy a 25 fps performance check.
+   Configure the main stream source and destination rates, both ISP
+   adjustment rates, and the one-second GOP intervals for 20 fps in
+   `camera/rkipc-imx415-720p.ini`. This matches the active device's observed
+   20 fps sensor timing while preserving the driver's 25 fps maximum.
 
    Keep output dimensions 1280x720: the RV1103 IPC implementation sets the
    VI channel size from video.0 width/height, so ISP scaling occurs before

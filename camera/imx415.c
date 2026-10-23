@@ -1123,7 +1123,7 @@ static __maybe_unused const struct regval imx415_linear_12bit_3864x2192_891M_reg
  * 25fps
  * CSI-2_2lane
  * AD:10bit Output:12bit
- * 445.5Mbps per lane
+ * 891Mbps per lane (445.5MHz link frequency)
  * Master Mode
  * 1H = 1100 clocks, VMAX = 2700
  * 1944x1097 2/2-line binning, full field of view
