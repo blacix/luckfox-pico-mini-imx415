@@ -6,8 +6,9 @@ through ADB from changes that require a complete image build and flash.
 
 ### Implemented
 
-- The root `build.sh` selects `sc3336` or `imx415`, synchronizes tracked kernel
-  and rootfs inputs into the SDK, and builds/packages the full image.
+- The root `build.sh` defaults to `imx415` and accepts `sc3336` explicitly;
+  it synchronizes tracked kernel and rootfs inputs into the SDK and
+  builds/packages the full image.
 - The tracked device tree keeps both camera definitions and switches the
   selected sensor and its D-PHY input in the SDK copy at build time.
 - The kernel defconfig enables both camera drivers as modules, and the full

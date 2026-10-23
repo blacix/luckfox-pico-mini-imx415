@@ -4,9 +4,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SDK_DIR="${ROOT_DIR}/sdk/luckfox-pico"
-CAMERA="${1:-}"
+CAMERA="${1:-imx415}"
 DTSI_SOURCE="${ROOT_DIR}/kernel/rv1103-luckfox-pico-ipc.dtsi"
 DTSI_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi"
+BOARD_DTS_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/boot/dts/rv1103g-luckfox-pico-mini.dts"
 KERNEL_CONFIG_SOURCE="${ROOT_DIR}/kernel/luckfox_rv1106_linux_defconfig"
 KERNEL_CONFIG_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig"
 OVERLAY_SOURCE="${ROOT_DIR}/overlay/a-eye"
@@ -17,8 +18,8 @@ CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ_SOURCE="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 CAMERA_FILES_TARGET="${OVERLAY_TARGET}/usr/share"
 
-if [[ "$#" -ne 1 ]]; then
-    echo "Usage: $0 {sc3336|imx415}" >&2
+if [[ "$#" -gt 1 ]]; then
+    echo "Usage: $0 [sc3336|imx415] (default: imx415)" >&2
     exit 2
 fi
 
@@ -33,6 +34,11 @@ esac
 
 if [[ ! -f "${DTSI_SOURCE}" ]]; then
     echo "Missing tracked DTSI: ${DTSI_SOURCE}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${BOARD_DTS_TARGET}" ]]; then
+    echo "Missing Pico Mini board DTS: ${BOARD_DTS_TARGET}" >&2
     exit 1
 fi
 
@@ -68,6 +74,11 @@ fi
 
 echo "Copying tracked DTSI into the SDK for ${CAMERA}"
 cp -- "${DTSI_SOURCE}" "${DTSI_TARGET}"
+
+echo "Enabling the integrated Ethernet PHY in the Pico Mini DTS"
+sed -i \
+    -e '/^&gmac {/,/^};/ s/status = "disabled";/status = "okay";/' \
+    "${BOARD_DTS_TARGET}"
 
 if [[ "${CAMERA}" == "sc3336" ]]; then
     echo "Selecting SC3336 in the SDK DTSI"

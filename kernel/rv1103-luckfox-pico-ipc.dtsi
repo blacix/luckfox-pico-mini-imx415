@@ -112,6 +112,12 @@
 };
 
 
+/***************************** ETHERNET *****************************/
+&gmac {
+	/* Use the SoC-integrated PHY for wired Ethernet. */
+	status = "okay";
+};
+
 /***************************** USB *********************************/
 &u2phy {
 	status = "okay";
