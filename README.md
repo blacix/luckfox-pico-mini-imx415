@@ -28,8 +28,11 @@ mode.
 .
 ├── README.md
 ├── camera.md
+├── build.sh                       # Synchronizes project inputs and builds firmware
+├── deploy.sh                      # Deploys selected changes to a running device
 ├── camera/                       # Tracked IMX415 camera configuration
 │   ├── imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
+│   ├── imx415.c                   # Tracked IMX415 kernel driver source
 │   └── rkipc-imx415-720p.ini
 ├── implementation-plan.md
 ├── kernel/                       # Tracked kernel inputs
@@ -99,33 +102,41 @@ must not be treated as an IMX415 configuration.
 
 ## Tracked project files and SDK synchronization
 
-The project takes the kernel inputs from the SDK and maintains the modified
-versions as tracked files under `kernel/`; rootfs additions are tracked under
-`overlay/`; the IMX415 `rkipc` profile and ISP IQ file are tracked under
-`camera/`. Keep project changes in those tracked copies. The SDK directory is
-ignored by this repository. Before the first build replaces SDK files with
-project files, save the original SDK DTSI, board DTS, and defconfig as `.orig`.
-Run this once from the repository root:
+The project maintains modified kernel inputs under `kernel/`, the IMX415
+driver and camera files under `camera/`, and rootfs additions under `overlay/`.
+The SDK directory is ignored by this repository. Before the first build
+overwrites SDK files with tracked project files, save the original DTSI,
+IMX415 driver, and kernel defconfig as `.orig`. The build script also edits the
+SDK board DTS in place to enable GMAC; save its original copy as well. Run this
+once from the repository root:
 
 ```sh
 cp sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi \
   sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi.orig
 cp sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103g-luckfox-pico-mini.dts \
   sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103g-luckfox-pico-mini.dts.orig
+cp sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c \
+  sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c.orig
 cp sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig \
   sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig.orig
 ```
 
-The tracked inputs and the SDK paths they replace are:
+The tracked project files copied into the SDK are:
 
 | Tracked project file | SDK destination |
 | --- | --- |
 | `kernel/rv1103-luckfox-pico-ipc.dtsi` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi` |
-| `build.sh` Ethernet setup | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103g-luckfox-pico-mini.dts` (`&gmac` status) |
 | `kernel/luckfox_rv1106_linux_defconfig` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig` |
+| `camera/imx415.c` | `sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c` |
 | `overlay/a-eye/` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/` |
 | `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` |
 | `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` |
+
+`build.sh` is the tracked build entry point; it is not an SDK configuration
+file. In addition to copying the files above, it changes
+`&gmac` from `disabled` to `okay` in the SDK's
+`rv1103g-luckfox-pico-mini.dts`. The board DTS is therefore edited in place,
+not replaced by a tracked project file.
 
 `camera/rkipc-imx415-720p.ini` is the project-owned 720p IMX415 profile for the
 `rkipc` application, adapted from the extracted Pico Zero profile.
@@ -136,18 +147,20 @@ included in the image at `/usr/share/rkipc-imx415-720p.ini` and
 `/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json`. Each build
 overwrites those SDK overlay copies with the tracked project files.
 
-Make changes in the project-owned files under `kernel/`, `overlay/`, and
-`camera/`. The root `build.sh` copies the tracked kernel inputs, rootfs overlay,
-and camera configuration into the SDK before building. The stock Pico Mini
-BoardConfig already selects the init overlay, so no custom BoardConfig is
-needed. The tracked DTSI contains the SC3336 and IMX415 nodes, the CSI-2 graph,
-and PWM0 LED setup, and enables `&gmac` for wired Ethernet. The Pico Mini board
-DTS later overrides GMAC to disabled, so the root build script also changes
-that board-level status to `okay` in the SDK copy. GMAC uses the SoC-integrated
-PHY described in `rv1106.dtsi`; SDK startup networking brings up `eth0` and
-requests an address with DHCP. The root build script selects one supported
-camera in the SDK copy. SC3336 uses D-PHY input 0; IMX415 uses D-PHY input 3,
-matching the working RV1103 camera configuration. The defconfig enables
+Make camera, kernel, and rootfs changes in the tracked files under `kernel/`,
+`overlay/`, and `camera/`. Change the root `build.sh` when the SDK
+synchronization or build steps need updating. It copies the tracked kernel
+inputs, driver, rootfs overlay, and camera configuration into the SDK before
+building. The stock Pico Mini BoardConfig already selects the init overlay, so
+no custom BoardConfig is needed. The tracked DTSI contains the SC3336 and IMX415
+nodes, the CSI-2 graph, PWM0 LED setup, and enables `&gmac` for wired Ethernet.
+The Pico Mini board DTS later overrides GMAC to disabled, so the root build
+script also changes that board-level status to `okay` in the SDK copy. GMAC
+uses the SoC-integrated PHY described in `rv1106.dtsi`; SDK startup networking
+brings up `eth0` and requests an address with DHCP. The root build script
+selects one supported camera in the SDK copy. SC3336 uses D-PHY input 0;
+IMX415 uses D-PHY input 3, matching the working RV1103 camera configuration.
+The defconfig enables
 `CONFIG_VIDEO_SC3336=m`, `CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
 
 ## Building, flashing, and testing the image
@@ -167,15 +180,16 @@ IMX415 drivers. Choose the camera attached to the board for each build:
    ```
 
    Choose `RV1103_Luckfox_Pico_Mini`, `[1] SPI_NAND`, and `Buildroot`.
-3. Build the full image from the repository root. IMX415 is the default; pass
-   `sc3336` explicitly for the stock camera. The script copies the tracked
-   project files into the SDK, selects
-   the camera in the SDK DTSI copy, enables GMAC in the Pico Mini board DTS,
-   places the IMX415 INI and IQ JSON in the rootfs overlay, builds all
-   components, and packages `update.img`:
+3. Build the full image from the repository root. IMX415 is the default, so
+   `./build.sh` and `./build.sh imx415` select the same camera. Pass `sc3336`
+   explicitly for the stock camera. The script copies the tracked project
+   files into the SDK, selects the camera in its DTSI copy, enables GMAC in
+   the Pico Mini board DTS, adds the IMX415 INI and IQ JSON to the rootfs
+   overlay, builds all components, and packages `update.img`:
 
    ```sh
    ./build.sh
+   ./build.sh imx415  # Same camera selection as ./build.sh
    # Or select the stock SC3336 camera:
    ./build.sh sc3336
    ```
@@ -564,8 +578,9 @@ device tree, and recovery image have been checked together.
 
 The tracked `kernel/rv1103-luckfox-pico-ipc.dtsi` keeps both supported camera
 definitions and their separate D-PHY inputs. The root build script prepares
-the SDK copy for the selected camera. It defaults to IMX415; pass `sc3336` to
-select the stock camera:
+the SDK copy for the selected camera. It defaults to IMX415; omitting the
+argument and passing `imx415` are equivalent. Pass `sc3336` to select the stock
+camera:
 
 - For `sc3336`, the SC3336 node is enabled and D-PHY input 0 connects to
   `sc3336_out`.
@@ -588,6 +603,8 @@ The root-level build script is the required build entry point:
 
 ```sh
 ./build.sh
+# Equivalent explicit IMX415 selection:
+./build.sh imx415
 # Or select the stock SC3336 camera:
 ./build.sh sc3336
 ```
