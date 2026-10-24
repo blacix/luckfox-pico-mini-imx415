@@ -634,6 +634,100 @@ Flash it from the repository root with the local upgrade tool:
   ./sdk/luckfox-pico/output/image/update.img
 ```
 
+## IMX415 two-lane 1080p sensor mode
+
+The tracked driver is the patched Luckfox/RV1106 IMX415 driver used with the
+Pico Mini. The 1080p addition is a new sensor mode, not a 1920x1080 sensor-pad
+format: the driver includes a two-lane, linear RAW12 mode that reads the full
+sensor field using 2x2 horizontal/vertical binning and outputs a 1944x1097
+Bayer frame. The Rockchip CIF crop is `(left=12, top=8,
+width=1920, height=1080)`, so the ISP receives Full HD. The existing
+`rkipc-imx415-720p.ini` then scales/encodes that input as 1280x720 for the
+application and RTSP stream. This avoids the narrow field of view produced by
+the driver's older 1284x720 windowed mode; it does not claim zero edge-pixel
+loss from the alignment crop.
+
+The mode is `imx415_linear_12bit_1944x1097_445M_regs_2lane` in
+`camera/imx415.c`, and it is the first entry in `supported_modes_2lane[]`.
+The first entry is the default for a two-lane sensor. The driver reports the
+sensor pad as `SGBRG12_1X12/1944x1097`; its selection rectangle describes the
+1920x1080 crop to the downstream Rockchip pipeline.
+
+### Mode timing and format
+
+| Setting | Value | Meaning |
+| --- | --- | --- |
+| CSI-2 lanes | 2 | Matches the Pico Mini camera connection |
+| XVCLK | 27 MHz | Sensor input clock |
+| Link frequency | 445.5 MHz | 891 Mbps per lane |
+| Sensor output | RAW12, SGBRG | Bayer data sent to the CIF |
+| ADC conversion | 10 bit | Sensor conversion setting used with RAW12 output |
+| Binning | 2x2 | Full-array readout, without the old 1284x720 window crop |
+| Sensor pad | 1944x1097 | Binned frame before the CIF crop |
+| CIF crop | `(12,8)`, 1920x1080 | Full HD image delivered to ISP |
+| HMAX / VMAX | 1100 / 2700 | 1H and frame length in sensor timing units |
+| Driver HTS / minimum VTS | 2200 / 2700 | Controls and frame timing; VTS cannot go below 2700 |
+| Calculated pixel rate | 148.5 MHz | `445.5 MHz × 2 lanes × 2 / 12 bits` |
+| Driver mode limit | 25 fps | `148.5 MHz / (2200 × 2700)` |
+| Application profile | 20 fps | Requested source/destination rate and GOP in the INI |
+
+The 25 fps value is the driver's mode ceiling. The tracked INI is set to 20 fps;
+it is not an instruction to run the application stream at 25 fps.
+
+### Key sensor register settings
+
+The values below are the writes in the new mode array. Multi-byte values are
+shown in increasing register-address order; the sensor interprets timing
+register bytes as little-endian values.
+
+| Register(s) | Value(s) | Purpose |
+| --- | --- | --- |
+| `0x3000`, `0x3002` at start | `01`, `01` | Hold the sensor in standby while programming the mode |
+| `0x3008`, `0x300A` | `5D`, `42` | Mode clock/setup values |
+| `0x301C` | `00` | Disable the old sensor window crop |
+| `0x3020–0x3022` | `01`, `01`, `01` | Enable the binned readout configuration |
+| `0x3024–0x3026` | `8C`, `0A`, `00` | VMAX = 2700 lines |
+| `0x3028–0x3029` | `4C`, `04` | HMAX = 1100 clocks |
+| `0x302C–0x302D` | `00`, `00` | Linear readout mode |
+| `0x3031–0x3033` | `00`, `01`, `05` | ADC/output format and 891 Mbps-per-lane link setting |
+| `0x3050–0x3052` | `08`, `00`, `00` | Initial SHR0 exposure timing; V4L2 controls update exposure |
+| `0x30CF` | `00` | Linear-mode setting |
+| `0x30D9–0x30DA` | `02`, `01` | Mode timing values |
+| `0x3115–0x3116` | `00`, `23` | Two-lane timing values |
+| `0x3118–0x311B` | `C6`, `00`, `E7`, `00` | Two-lane timing values |
+| `0x311E` | `23` | Two-lane timing value |
+| `0x3260`, `0x3701` | `01`, `00` | Binned readout settings |
+| `0x4001` | `01` | Select two CSI-2 lanes |
+| `0x4004–0x4005` | `C0`, `06` | Readout timing value (`0x06C0`) |
+| `0x400C`, `0x4074` | `00`, `01` | Mode-specific readout settings |
+| `0x4018–0x4029` | `7F 00 37 00 37 00 F7 00 3F 00 6F 00 3F 00 5F 00 2F 00` | Sensor readout timing table |
+
+The mode array also contains the supporting sensor tuning and MIPI timing
+writes in the `0x32xx`–`0x3Bxx` ranges. These values are part of the mode
+programming sequence; keep them with the new mode when changing it. The array
+ends by releasing master stop (`0x3002 = 0`) and waiting 30 ms, while leaving
+standby asserted. The driver's stream-start path applies V4L2 controls and then
+starts output by writing `0x3000 = 0`.
+
+### What the driver patch changes
+
+The patch adds the binned mode to the two-lane mode table and adds the exact
+445.5 MHz link-frequency entry used by that mode. It adds per-mode `vts_min`
+metadata so the new mode cannot be driven below 2700 lines per frame, and uses
+that minimum when setting VBLANK controls. Mode changes also update exposure,
+link-frequency, and pixel-rate control values. Frame-interval reporting uses
+the selected mode's actual VTS, including extra vertical blanking. The
+selection code reports the aligned 1920x1080 crop for the 1944x1097 pad. The
+stream-start path now skips the global register array when a mode has no global
+array, as is the case for these two-lane modes.
+
+The older two-lane RAW12 full-resolution and 1284x720 windowed modes remain in
+the table. Their mode arrays explicitly restore their own windowing, binning,
+format, and timing settings so switching modes does not inherit the new mode's
+register state. The driver mode and INI rate are implemented; end-to-end frame,
+image-quality, restart, and reboot validation is tracked in
+[implementation-plan.md](implementation-plan.md).
+
 ## Status
 
 The reproducible build, SC3336/IMX415 camera selection, kernel module
