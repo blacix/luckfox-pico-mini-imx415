@@ -99,6 +99,8 @@ cp -- "${KERNEL_CONFIG_SOURCE}" "${KERNEL_CONFIG_TARGET}"
 
 echo "Copying tracked rootfs overlay into the SDK"
 mkdir -p "${OVERLAY_TARGET}"
+# Clear all prior project init services before installing the tracked set.
+rm -f -- "${OVERLAY_TARGET}/etc/init.d"/S99a-eye*
 cp -a -- "${OVERLAY_SOURCE}/." "${OVERLAY_TARGET}/"
 
 echo "Copying tracked IMX415 driver into the SDK kernel source tree"

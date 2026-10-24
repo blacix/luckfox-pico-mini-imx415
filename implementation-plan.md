@@ -17,7 +17,7 @@ through ADB from changes that require a complete image build and flash.
   and copied into the image overlay at `/usr/share/`.
 - `S99a-eye-cam` stops the stock `rkipc` process and starts it with the tracked
   IMX415 INI and IQ directory; its startup on the device has been tested and
-  works. `S99a-eye` runs the PWM LED test.
+  works. `S99a-eye-led` runs the PWM LED test.
 - `deploy.sh` provides an ADB-based iteration path for changed module,
   userspace configuration, and service files without rebuilding the complete
   image.
