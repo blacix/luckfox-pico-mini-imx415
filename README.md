@@ -40,7 +40,7 @@ mode.
 │   └── luckfox_rv1106_linux_defconfig
 ├── overlay/                     # Tracked rootfs overlay inputs
 │   └── a-eye/
-│       ├── etc/init.d/S99a-eye
+│       ├── etc/init.d/S99a-eye-led
 │       ├── etc/init.d/S99a-eye-cam
 │       └── usr/bin/test-pwm-led.sh
 └── sdk/                         # Local SDK and firmware tools; ignored by Git
@@ -136,7 +136,10 @@ The tracked project files copied into the SDK are:
 file. In addition to copying the files above, it changes
 `&gmac` from `disabled` to `okay` in the SDK's
 `rv1103g-luckfox-pico-mini.dts`. The board DTS is therefore edited in place,
-not replaced by a tracked project file.
+not replaced by a tracked project file. Before copying the tracked overlay,
+`build.sh` removes all existing `/etc/init.d/S99a-eye*` entries from the SDK
+overlay, then copies in the current tracked services. This prevents stale
+project service names from carrying into the new image.
 
 `camera/rkipc-imx415-720p.ini` is the project-owned 720p IMX415 profile for the
 `rkipc` application, adapted from the extracted Pico Zero profile.
@@ -246,7 +249,7 @@ For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
 tracked project files to the device:
 
 - `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
-- `overlay/a-eye/etc/init.d/S99a-eye` to `/etc/init.d/S99a-eye`;
+- `overlay/a-eye/etc/init.d/S99a-eye-led` to `/etc/init.d/S99a-eye-led`;
 - `overlay/a-eye/etc/init.d/S99a-eye-cam` to `/etc/init.d/S99a-eye-cam`;
 - `camera/rkipc-imx415-720p.ini` to `/usr/share/rkipc-imx415-720p.ini`;
 - the camera IQ JSON to `/usr/share/iqfiles/`;
@@ -255,8 +258,10 @@ tracked project files to the device:
 The script stops `rkipc`, unloads the currently loaded IMX415 module if
 present, installs and loads the new module, then restarts the LED and camera
 services. The camera service launches `rkipc` with the deployed INI and IQ
-directory. Deployment requires a connected device with a root ADB shell and a
-module built for the device's currently running kernel.
+directory. `deploy.sh` does not remove old init-service filenames from a
+running image; flash a newly built image to apply the service rename cleanly.
+Deployment requires a connected device with a root ADB shell and a module
+built for the device's currently running kernel.
 
 This is an iteration shortcut, not a replacement for a firmware build. Use it
 for changes to the module binary, INI/IQ files, or deployed scripts when the
@@ -485,9 +490,9 @@ Because the LED consumer owns PWM0, do not export `pwm0` manually through
 The init script can also be controlled manually from the device shell:
 
 ```sh
-/etc/init.d/S99a-eye start
-/etc/init.d/S99a-eye stop
-/etc/init.d/S99a-eye restart
+/etc/init.d/S99a-eye-led start
+/etc/init.d/S99a-eye-led stop
+/etc/init.d/S99a-eye-led restart
 ```
 
 ## Optional: manually loading the module on the device
