@@ -42,7 +42,9 @@ mode.
 │   └── a-eye/
 │       ├── etc/init.d/S99a-eye-led
 │       ├── etc/init.d/S99a-eye-cam
-│       └── usr/bin/test-pwm-led.sh
+│       └── usr/bin/
+│           ├── rkipc-supervisor.sh
+│           └── test-pwm-led.sh
 └── sdk/                         # Local SDK and firmware tools; ignored by Git
     ├── Luckfox_Pico_Mini_Flash_250607/
     │   └── Stock firmware images and update files
@@ -136,10 +138,12 @@ The tracked project files copied into the SDK are:
 file. In addition to copying the files above, it changes
 `&gmac` from `disabled` to `okay` in the SDK's
 `rv1103g-luckfox-pico-mini.dts`. The board DTS is therefore edited in place,
-not replaced by a tracked project file. Before copying the tracked overlay,
-`build.sh` removes all existing `/etc/init.d/S99a-eye*` entries from the SDK
-overlay, then copies in the current tracked services. This prevents stale
-project service names from carrying into the new image.
+not replaced by a tracked project file. `build.sh` copies the complete
+`overlay/a-eye/` directory into the SDK overlay, including both
+`usr/bin/test-pwm-led.sh` and `usr/bin/rkipc-supervisor.sh`. Before copying, it
+removes existing `/etc/init.d/S99a-eye*` entries from the SDK overlay, then
+copies the current tracked services. This prevents stale project service
+names from carrying into the new image.
 
 `camera/rkipc-imx415-720p.ini` is the project-owned 720p IMX415 profile for the
 `rkipc` application, adapted from the extracted Pico Zero profile.
@@ -249,6 +253,8 @@ For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
 tracked project files to the device:
 
 - `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
+- `overlay/a-eye/usr/bin/rkipc-supervisor.sh` to
+  `/usr/bin/rkipc-supervisor.sh`;
 - `overlay/a-eye/etc/init.d/S99a-eye-led` to `/etc/init.d/S99a-eye-led`;
 - `overlay/a-eye/etc/init.d/S99a-eye-cam` to `/etc/init.d/S99a-eye-cam`;
 - `camera/rkipc-imx415-720p.ini` to `/usr/share/rkipc-imx415-720p.ini`;
@@ -313,13 +319,14 @@ This is separate from the USB `usb0` network interface described above.
 
 The `rkipc` application provides the RTSP server. The main stream is available
 at `/live/0` on port 554. The tracked `/etc/init.d/S99a-eye-cam` service stops
-the stock `rkipc` process and starts `/oem/usr/bin/rkipc` with the project
-IMX415 files. It passes `/usr/share/rkipc-imx415-720p.ini` with `-c` and
-`/usr/share/iqfiles` with `-a`. In the full image, the service is included in
-the boot init sequence for the IMX415 setup; after deploying changes with
-`./deploy.sh`, the script restarts it immediately. This service uses an
-IMX415-specific profile and should not replace the stock camera process in a
-SC3336 setup.
+the stock `rkipc` process and starts `/usr/bin/rkipc-supervisor.sh`. The
+supervisor runs `/oem/usr/bin/rkipc` with
+`/usr/share/rkipc-imx415-720p.ini` (`-c`) and `/usr/share/iqfiles` (`-a`). If
+`rkipc` exits, the supervisor retries after a fixed five-second delay. In the
+full image, `S99a-eye-cam` is in the boot init sequence and launches the
+supervisor for the IMX415 setup. After deploying changes with `./deploy.sh`,
+the service restarts immediately. This IMX415-specific service should not
+replace the stock camera process in a SC3336 setup.
 
 ```sh
 adb shell /etc/init.d/S99a-eye-cam restart
@@ -331,11 +338,11 @@ Use the service to stop the camera process or restart it after boot:
 adb shell /etc/init.d/S99a-eye-cam stop
 ```
 
-The service writes output to `/tmp/rkipc.log` and sets
+The supervisor writes output and restart messages to `/tmp/rkipc.log` and sets
 `LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib` for `rkipc`, so its vendor libraries
 are found when it is launched by init without an interactive shell
-environment. If startup fails, inspect the log with
-`adb shell tail -n 80 /tmp/rkipc.log`.
+environment. If startup fails or the service keeps restarting, inspect the
+log with `adb shell tail -n 80 /tmp/rkipc.log`.
 
 Check the RTSP port and play the stream from the host:
 

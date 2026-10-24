@@ -5,17 +5,20 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 MODULE="${ROOT_DIR}/sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/modules/5.10.160/kernel/drivers/media/i2c/imx415.ko"
 LED_TEST="${ROOT_DIR}/overlay/a-eye/usr/bin/test-pwm-led.sh"
+RKIPC_SUPERVISOR="${ROOT_DIR}/overlay/a-eye/usr/bin/rkipc-supervisor.sh"
 INIT_SCRIPT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-led"
 CAMERA_INIT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-cam"
 CAMERA_INI="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 REMOTE_MODULE=/tmp/imx415.ko
 REMOTE_SCRIPT=/tmp/test-pwm-led.sh
+REMOTE_RKIPC_SUPERVISOR=/tmp/rkipc-supervisor.sh
 REMOTE_INIT=/tmp/S99a-eye-led
 REMOTE_CAMERA_INIT=/tmp/S99a-eye-cam
 REMOTE_CAMERA_INI=/tmp/rkipc-imx415-720p.ini
 REMOTE_CAMERA_IQ=/tmp/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 INSTALLED_SCRIPT=/usr/bin/test-pwm-led.sh
+INSTALLED_RKIPC_SUPERVISOR=/usr/bin/rkipc-supervisor.sh
 INSTALLED_INIT=/etc/init.d/S99a-eye-led
 INSTALLED_CAMERA_INIT=/etc/init.d/S99a-eye-cam
 INSTALLED_CAMERA_INI=/usr/share/rkipc-imx415-720p.ini
@@ -31,6 +34,11 @@ fi
 if [[ ! -f "${LED_TEST}" ]]; then
     echo "Missing LED test script: ${LED_TEST}" >&2
     exit 1
+fi
+
+if [[ ! -f "${RKIPC_SUPERVISOR}" ]]; then
+	echo "Missing rkipc supervisor: ${RKIPC_SUPERVISOR}" >&2
+	exit 1
 fi
 
 if [[ ! -f "${INIT_SCRIPT}" ]]; then
@@ -61,6 +69,9 @@ adb push "${MODULE}" "${REMOTE_MODULE}"
 echo "Pushing LED test script"
 adb push "${LED_TEST}" "${REMOTE_SCRIPT}"
 
+echo "Pushing rkipc supervisor"
+adb push "${RKIPC_SUPERVISOR}" "${REMOTE_RKIPC_SUPERVISOR}"
+
 echo "Pushing init script"
 adb push "${INIT_SCRIPT}" "${REMOTE_INIT}"
 
@@ -82,6 +93,8 @@ adb shell "
     fi
     chmod 0755 '${REMOTE_SCRIPT}'
     mv '${REMOTE_SCRIPT}' '${INSTALLED_SCRIPT}'
+    chmod 0755 '${REMOTE_RKIPC_SUPERVISOR}'
+    mv '${REMOTE_RKIPC_SUPERVISOR}' '${INSTALLED_RKIPC_SUPERVISOR}'
     chmod 0755 '${REMOTE_INIT}'
     mv '${REMOTE_INIT}' '${INSTALLED_INIT}'
     chmod 0755 '${REMOTE_CAMERA_INIT}'
@@ -95,6 +108,7 @@ adb shell "
     '${INSTALLED_INIT}' restart
     '${INSTALLED_CAMERA_INIT}' start
     test -x '${INSTALLED_SCRIPT}'
+    test -x '${INSTALLED_RKIPC_SUPERVISOR}'
     test -x '${INSTALLED_INIT}'
     test -x '${INSTALLED_CAMERA_INIT}'
     test -f '${INSTALLED_CAMERA_INI}'

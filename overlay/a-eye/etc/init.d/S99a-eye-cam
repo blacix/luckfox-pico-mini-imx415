@@ -1,10 +1,10 @@
 #!/bin/sh
 
+SUPERVISOR=/usr/bin/rkipc-supervisor.sh
+PIDFILE=/run/rkipc-supervisor.pid
 RKIPC=/oem/usr/bin/rkipc
 INI=/usr/share/rkipc-imx415-720p.ini
-IQ_DIR=/usr/share/iqfiles
-IQ_FILE=${IQ_DIR}/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
-LOGFILE=/tmp/rkipc.log
+IQ_FILE=/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 
 stop_existing() {
 	killall rkipc 2>/dev/null || true
@@ -20,7 +20,17 @@ stop_existing() {
 	done
 }
 
+supervisor_running() {
+	[ -f "$PIDFILE" ] || return 1
+	pid=$(cat "$PIDFILE")
+	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
 start() {
+	if [ ! -x "$SUPERVISOR" ]; then
+		echo "Missing rkipc supervisor: $SUPERVISOR" >&2
+		return 1
+	fi
 	if [ ! -x "$RKIPC" ]; then
 		echo "Missing rkipc executable: $RKIPC" >&2
 		return 1
@@ -34,20 +44,44 @@ start() {
 		return 1
 	fi
 
+	if supervisor_running; then
+		echo "rkipc supervisor is already running"
+		return 0
+	fi
+	rm -f "$PIDFILE"
 	stop_existing || return 1
-	LD_LIBRARY_PATH="/oem/usr/lib:/oem/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-	export LD_LIBRARY_PATH
-	nohup "$RKIPC" -c "$INI" -a "$IQ_DIR" >>"$LOGFILE" 2>&1 </dev/null &
-	pid=$!
-	sleep 1
-	if ! kill -0 "$pid" 2>/dev/null; then
-		echo "rkipc failed to start; see $LOGFILE" >&2
+
+	printf "Starting rkipc supervisor: "
+	if ! start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$SUPERVISOR"; then
+		rm -f "$PIDFILE"
+		echo "FAILED"
 		return 1
 	fi
-	echo "Started IMX415 rkipc (pid $pid)"
+	sleep 1
+	if ! supervisor_running; then
+		rm -f "$PIDFILE"
+		echo "Supervisor failed to start; see /tmp/rkipc.log" >&2
+		return 1
+	fi
+	echo "OK"
 }
 
 stop() {
+	if supervisor_running; then
+		pid=$(cat "$PIDFILE")
+		start-stop-daemon -K -q -p "$PIDFILE" || true
+
+		count=0
+		while kill -0 "$pid" 2>/dev/null; do
+			count=$((count + 1))
+			if [ "$count" -ge 5 ]; then
+				kill -KILL "$pid" 2>/dev/null || true
+				break
+			fi
+			sleep 1
+		done
+	fi
+	rm -f "$PIDFILE"
 	stop_existing
 }
 
