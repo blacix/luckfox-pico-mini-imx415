@@ -44,6 +44,7 @@ request_stop() {
 trap 'request_stop' TERM INT
 
 while [ "$stopping" -eq 0 ]; do
+	: >"$LOGFILE"
 	log "Starting rkipc"
 	"$RKIPC" -c "$INI" -a "$IQ_DIR" >>"$LOGFILE" 2>&1 &
 	child_pid=$!

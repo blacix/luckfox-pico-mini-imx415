@@ -18,7 +18,12 @@ run_test() {
     low=$((max / 4))
     mid=$((max / 2))
 
-    trap 'echo 0 > /sys/class/leds/pwm0_led/brightness' EXIT INT TERM
+    cleanup() {
+        echo 0 > /sys/class/leds/pwm0_led/brightness 2>/dev/null || true
+    }
+
+    trap cleanup EXIT
+    trap 'exit 0' INT TERM
 
     while true; do
         for brightness in 0 "$low" "$mid" "$max" "$mid" "$low"; do

@@ -17,10 +17,9 @@ and the validation needed to capture frames from the board.
 - Camera: SC3336 or Sony IMX415, selected at build time
 - Camera interface: two-lane MIPI CSI-2
 
-The RV1103 camera pipeline is limited compared with the native IMX415
-resolution. Development should therefore begin with a supported reduced
-resolution or high-frame-rate mode before attempting the native 3840 x 2160
-mode.
+The IMX415 configuration uses a two-lane binned 1944x1097 sensor mode, cropped
+to 1920x1080 by the camera pipeline and scaled to 1280x720 by `rkipc`. The
+remaining work is end-to-end validation on the Pico Mini.
 
 ## Repository structure
 
@@ -58,8 +57,9 @@ mode.
 
 - `camera.md` records the current board state, camera pipeline findings,
   installed drivers, firmware contents, and hardware compatibility questions.
-- `implementation-plan.md` defines the staged plan for building, integrating,
-  flashing, and validating IMX415 support.
+- `implementation-plan.md` lists the remaining camera-selection and 1080p
+  validation work.
+- `review.md` tracks unresolved startup and runtime questions.
 
 ### `sdk/`
 
@@ -96,11 +96,11 @@ firmware changes are flashed.
 
 ## Development objective
 
-The project now has a full-image build path for either camera and an IMX415
-application configuration. The remaining work is target validation: confirm
-that the IMX415 service starts reliably after boot, capture frames through
-V4L2, and record stable capture and RTSP settings. The stock SC3336 IQ file
-must not be treated as an IMX415 configuration.
+The project has a full-image build path for either camera. The IMX415 build uses
+the project camera service, INI, and IQ file; the SC3336 build uses the SDK's
+stock camera startup and IQ configuration. Outstanding target checks are
+listed in [implementation-plan.md](implementation-plan.md). The stock SC3336 IQ
+file is not an IMX415 configuration.
 
 ## Tracked project files and SDK synchronization
 
@@ -130,37 +130,44 @@ The tracked project files copied into the SDK are:
 | `kernel/rv1103-luckfox-pico-ipc.dtsi` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi` |
 | `kernel/luckfox_rv1106_linux_defconfig` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig` |
 | `camera/imx415.c` | `sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c` |
-| `overlay/a-eye/` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/` |
-| `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` |
-| `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` |
+| `overlay/a-eye/etc/init.d/S99a-eye-led` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-led` (all builds) |
+| `overlay/a-eye/usr/bin/test-pwm-led.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/test-pwm-led.sh` (all builds) |
+| `overlay/a-eye/etc/init.d/S99a-eye-cam` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-cam` (IMX415 only) |
+| `overlay/a-eye/usr/bin/rkipc-supervisor.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/rkipc-supervisor.sh` (IMX415 only) |
+| `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` (IMX415 only) |
+| `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` (IMX415 only) |
 
 `build.sh` is the tracked build entry point; it is not an SDK configuration
 file. In addition to copying the files above, it changes
 `&gmac` from `disabled` to `okay` in the SDK's
 `rv1103g-luckfox-pico-mini.dts`. The board DTS is therefore edited in place,
-not replaced by a tracked project file. `build.sh` copies the complete
-`overlay/a-eye/` directory into the SDK overlay, including both
-`usr/bin/test-pwm-led.sh` and `usr/bin/rkipc-supervisor.sh`. Before copying, it
-removes existing `/etc/init.d/S99a-eye*` entries from the SDK overlay, then
-copies the current tracked services. This prevents stale project service
-names from carrying into the new image.
+not replaced by a tracked project file. The script clears existing
+`/etc/init.d/S99a-eye*` services and the known IMX415 camera files from the SDK
+overlay before installing the files for the selected camera. Both builds get
+`S99a-eye-led` and `test-pwm-led.sh`. Only an IMX415 build gets
+`S99a-eye-cam`, `rkipc-supervisor.sh`, the IMX415 INI, and its IQ JSON. An
+SC3336 build therefore leaves the SDK's stock camera configuration and IQ
+files in place without installing the IMX415 camera service or profile.
 
 `camera/rkipc-imx415-720p.ini` is the project-owned 720p IMX415 profile for the
 `rkipc` application, adapted from the extracted Pico Zero profile.
 `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` is the matching ISP IQ
-tuning file. Both are needed for the tested IMX415 `rkipc` setup. The root
-`build.sh` copies them into the SDK's selected Buildroot overlay, so they are
-included in the image at `/usr/share/rkipc-imx415-720p.ini` and
-`/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json`. Each build
-overwrites those SDK overlay copies with the tracked project files.
+tuning file. Both are needed for the tested IMX415 `rkipc` setup. For an
+IMX415 build, the root `build.sh` copies them into the SDK's selected Buildroot
+overlay, so they are included in the image at
+`/usr/share/rkipc-imx415-720p.ini` and
+`/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json`. Before
+processing either camera selection, the script removes these known project
+copies from the SDK overlay; an SC3336 build does not put them back.
 
 Make camera, kernel, and rootfs changes in the tracked files under `kernel/`,
 `overlay/`, and `camera/`. Change the root `build.sh` when the SDK
-synchronization or build steps need updating. It copies the tracked kernel
-inputs, driver, rootfs overlay, and camera configuration into the SDK before
-building. The stock Pico Mini BoardConfig already selects the init overlay, so
-no custom BoardConfig is needed. The tracked DTSI contains the SC3336 and IMX415
-nodes, the CSI-2 graph, PWM0 LED setup, and enables `&gmac` for wired Ethernet.
+synchronization or build steps need updating. It copies tracked kernel inputs,
+driver source, and the files required for the selected camera into the SDK
+before building. The stock Pico Mini BoardConfig already selects the init
+overlay, so no custom BoardConfig is needed. The tracked DTSI contains the
+SC3336 and IMX415 nodes, the CSI-2 graph, PWM0 LED setup, and enables `&gmac`
+for wired Ethernet.
 The Pico Mini board DTS later overrides GMAC to disabled, so the root build
 script also changes that board-level status to `okay` in the SDK copy. GMAC
 uses the SoC-integrated PHY described in `rv1106.dtsi`; SDK startup networking
@@ -189,10 +196,10 @@ IMX415 drivers. Choose the camera attached to the board for each build:
    Choose `RV1103_Luckfox_Pico_Mini`, `[1] SPI_NAND`, and `Buildroot`.
 3. Build the full image from the repository root. IMX415 is the default, so
    `./build.sh` and `./build.sh imx415` select the same camera. Pass `sc3336`
-   explicitly for the stock camera. The script copies the tracked project
-   files into the SDK, selects the camera in its DTSI copy, enables GMAC in
-   the Pico Mini board DTS, adds the IMX415 INI and IQ JSON to the rootfs
-   overlay, builds all components, and packages `update.img`:
+   explicitly for the stock camera. The script selects the camera in its DTSI
+   copy, enables GMAC in the Pico Mini board DTS, installs shared LED files,
+   and installs the IMX415 service and camera files only for an IMX415 build.
+   It then builds all components and packages `update.img`:
 
    ```sh
    ./build.sh
@@ -338,7 +345,9 @@ Use the service to stop the camera process or restart it after boot:
 adb shell /etc/init.d/S99a-eye-cam stop
 ```
 
-The supervisor writes output and restart messages to `/tmp/rkipc.log` and sets
+The supervisor writes output and restart messages to `/tmp/rkipc.log`, clearing
+it before each `rkipc` attempt so only the latest attempt is retained. A single
+long-running attempt can still produce a large log. It sets
 `LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib` for `rkipc`, so its vendor libraries
 are found when it is launched by init without an interactive shell
 environment. If startup fails or the service keeps restarting, inspect the
@@ -577,14 +586,9 @@ After editing the device tree, rebuild and package from the repository root:
 ./build.sh imx415
 ```
 
-The updated device tree must eventually be packaged into the boot image. The
-kernel module and device-tree changes are both required for the IMX415 driver
-to bind to the sensor.
-
-Building the module alone does not configure the camera. IMX415 support also
-requires the IMX415 device-tree node and packaging the resulting module and
-device tree into the firmware image. Do not flash the board until the module,
-device tree, and recovery image have been checked together.
+The full image build packages the kernel module and selected device tree
+together. A module-only build does not update the device tree; device-tree
+changes require a full image build and flash.
 
 ## Current device-tree integration
 
@@ -728,13 +732,8 @@ register state. The driver mode and INI rate are implemented; end-to-end frame,
 image-quality, restart, and reboot validation is tracked in
 [implementation-plan.md](implementation-plan.md).
 
-## Status
+## Related documentation
 
-The reproducible build, SC3336/IMX415 camera selection, kernel module
-packaging, PWM0 LED support, tracked IMX415 INI/IQ files, and custom `rkipc`
-service are in place. Remaining validation is listed in
-[implementation-plan.md](implementation-plan.md), including reliable camera
-service startup and the complete IMX415 capture path.
-
-See [camera.md](camera.md) and [implementation-plan.md](implementation-plan.md)
-for the detailed findings and plan.
+See [camera.md](camera.md) for board and pipeline details,
+[implementation-plan.md](implementation-plan.md) for remaining validation,
+and [review.md](review.md) for open review items.

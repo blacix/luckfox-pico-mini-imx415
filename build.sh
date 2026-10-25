@@ -12,11 +12,14 @@ KERNEL_CONFIG_SOURCE="${ROOT_DIR}/kernel/luckfox_rv1106_linux_defconfig"
 KERNEL_CONFIG_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig"
 OVERLAY_SOURCE="${ROOT_DIR}/overlay/a-eye"
 OVERLAY_TARGET="${SDK_DIR}/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init"
+INIT_TARGET="${OVERLAY_TARGET}/etc/init.d"
+BIN_TARGET="${OVERLAY_TARGET}/usr/bin"
 CAMERA_DRIVER_SOURCE="${ROOT_DIR}/camera/imx415.c"
 CAMERA_DRIVER_TARGET="${SDK_DIR}/sysdrv/source/kernel/drivers/media/i2c/imx415.c"
 CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ_SOURCE="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
-CAMERA_FILES_TARGET="${OVERLAY_TARGET}/usr/share"
+CAMERA_INI_TARGET="${OVERLAY_TARGET}/usr/share/rkipc-imx415-720p.ini"
+CAMERA_IQ_TARGET="${OVERLAY_TARGET}/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 
 if [[ "$#" -gt 1 ]]; then
     echo "Usage: $0 [sc3336|imx415] (default: imx415)" >&2
@@ -57,20 +60,32 @@ if [[ ! -f "${CAMERA_DRIVER_SOURCE}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${CAMERA_INI_SOURCE}" ]]; then
-    echo "Missing tracked IMX415 rkipc profile: ${CAMERA_INI_SOURCE}" >&2
-    exit 1
-fi
+if [[ "${CAMERA}" == "imx415" ]]; then
+    if [[ ! -f "${CAMERA_INI_SOURCE}" ]]; then
+        echo "Missing tracked IMX415 rkipc profile: ${CAMERA_INI_SOURCE}" >&2
+        exit 1
+    fi
 
-if [[ ! -f "${CAMERA_IQ_SOURCE}" ]]; then
-    echo "Missing tracked IMX415 IQ file: ${CAMERA_IQ_SOURCE}" >&2
-    exit 1
+    if [[ ! -f "${CAMERA_IQ_SOURCE}" ]]; then
+        echo "Missing tracked IMX415 IQ file: ${CAMERA_IQ_SOURCE}" >&2
+        exit 1
+    fi
 fi
 
 if [[ ! -x "${SDK_DIR}/build.sh" ]]; then
     echo "Missing SDK build script: ${SDK_DIR}/build.sh" >&2
     exit 1
 fi
+
+echo "Removing previously installed project camera files from the SDK overlay"
+mkdir -p "${OVERLAY_TARGET}"
+# Clear the last build's project services and IMX415-only files before applying
+# the requested camera selection.
+rm -f -- "${INIT_TARGET}"/S99a-eye*
+rm -f -- \
+    "${BIN_TARGET}/rkipc-supervisor.sh" \
+    "${CAMERA_INI_TARGET}" \
+    "${CAMERA_IQ_TARGET}"
 
 echo "Copying tracked DTSI into the SDK for ${CAMERA}"
 cp -- "${DTSI_SOURCE}" "${DTSI_TARGET}"
@@ -97,20 +112,22 @@ fi
 echo "Copying tracked kernel config into the SDK"
 cp -- "${KERNEL_CONFIG_SOURCE}" "${KERNEL_CONFIG_TARGET}"
 
-echo "Copying tracked rootfs overlay into the SDK"
-mkdir -p "${OVERLAY_TARGET}"
-# Clear all prior project init services before installing the tracked set.
-rm -f -- "${OVERLAY_TARGET}/etc/init.d"/S99a-eye*
-cp -a -- "${OVERLAY_SOURCE}/." "${OVERLAY_TARGET}/"
+echo "Preparing project files in the SDK rootfs overlay"
+mkdir -p "${INIT_TARGET}" "${BIN_TARGET}"
+cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-led" "${INIT_TARGET}/"
+cp -- "${OVERLAY_SOURCE}/usr/bin/test-pwm-led.sh" "${BIN_TARGET}/"
+
+if [[ "${CAMERA}" == "imx415" ]]; then
+    echo "Installing IMX415 camera service and configuration into the SDK overlay"
+    cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-cam" "${INIT_TARGET}/"
+    cp -- "${OVERLAY_SOURCE}/usr/bin/rkipc-supervisor.sh" "${BIN_TARGET}/"
+    mkdir -p "$(dirname -- "${CAMERA_IQ_TARGET}")"
+    cp -- "${CAMERA_INI_SOURCE}" "${CAMERA_INI_TARGET}"
+    cp -- "${CAMERA_IQ_SOURCE}" "${CAMERA_IQ_TARGET}"
+fi
 
 echo "Copying tracked IMX415 driver into the SDK kernel source tree"
 cp -- "${CAMERA_DRIVER_SOURCE}" "${CAMERA_DRIVER_TARGET}"
-
-echo "Copying tracked IMX415 camera configuration into the SDK rootfs overlay"
-mkdir -p "${CAMERA_FILES_TARGET}/iqfiles"
-cp -a -- "${CAMERA_INI_SOURCE}" "${CAMERA_FILES_TARGET}/rkipc-imx415-720p.ini"
-cp -a -- "${CAMERA_IQ_SOURCE}" \
-    "${CAMERA_FILES_TARGET}/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 
 cd "${SDK_DIR}"
 

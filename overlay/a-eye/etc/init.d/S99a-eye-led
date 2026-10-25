@@ -1,7 +1,6 @@
 #!/bin/sh
 
 LED_TEST=/usr/bin/test-pwm-led.sh
-MODULE=/oem/usr/ko/imx415.ko
 PIDFILE=/run/a-eye-pwm-led.pid
 
 is_running() {
@@ -14,14 +13,6 @@ start() {
 	if is_running; then
 		echo "a-eye LED test is already running"
 		return 0
-	fi
-
-	if ! grep -q '^imx415 ' /proc/modules; then
-		if [ ! -f "$MODULE" ]; then
-			echo "Missing kernel module: $MODULE" >&2
-			return 1
-		fi
-		insmod "$MODULE"
 	fi
 
 	if [ ! -x "$LED_TEST" ]; then
