@@ -259,7 +259,10 @@ int collect_brightness(JDEC *decoder, void *bitmap, JRECT *rect) {
 	const size_t pixel_count = static_cast<size_t>(width) * height;
 
 	for (size_t index = 0; index < pixel_count; ++index) {
-		// TJpgDec is configured for RGB888. Use integer BT.601 luma weights.
+		// TJpgDec outputs RGB888. Estimate pixel brightness (luma/Y) using
+		// BT.601: 0.299R + 0.587G + 0.114B. Green contributes more because
+		// it has the greatest weight in this brightness approximation. This
+		// describes the decoded JPEG, not physical ambient light in lux.
 		const unsigned int red = pixels[index * 3];
 		const unsigned int green = pixels[index * 3 + 1];
 		const unsigned int blue = pixels[index * 3 + 2];
@@ -351,6 +354,7 @@ bool capture_and_report(const std::string &socket_path,
 	metrics.sample_width = static_cast<uint16_t>(brightness.width);
 	metrics.sample_height = static_cast<uint16_t>(brightness.height);
 	metrics.samples = brightness.samples;
+	// mean_y is the arithmetic average of the per-pixel luma values above.
 	metrics.mean_luma = static_cast<double>(brightness.sum) / brightness.samples;
 	metrics.p10_luma = percentile(brightness, 10);
 	metrics.p50_luma = percentile(brightness, 50);

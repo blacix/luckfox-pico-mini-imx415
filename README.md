@@ -568,7 +568,10 @@ The init script can also be controlled manually from the device shell:
 On both camera builds, `S99a-eye-night-vision` supervises
 `/usr/bin/night-vision`. The C++ controller asks
 `/usr/bin/night-vision-jpeg` for a sample every 5 seconds and uses its `mean_y`
-value. The defaults, calibrated from the supplied
+value. `mean_y` is the average pixel luma calculated from the decoded JPEG
+using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
+image brightness, not physical ambient light in lux, and is affected by camera
+exposure and image processing. The defaults, calibrated from the supplied
 SC3336 samples, turn night mode on below 100 and back off above 110 (0 is black,
 255 is white); override them with
 `--night-on`, `--day-on`, and `--interval-sec`. Night mode sets the PWM LED to

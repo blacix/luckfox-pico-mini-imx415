@@ -9,6 +9,19 @@ dimensions, mean luma, p10/p50/p90 luma, and minimum and maximum luma. It
 removes the processed JPEG by default; `--keep-snapshots` preserves it. The
 usage output lists path and sampling interval options.
 
+For each decoded RGB pixel, the processor estimates luma (the pixel's
+brightness-like value) with the BT.601 weights:
+
+```text
+Y = 0.299 * red + 0.587 * green + 0.114 * blue
+```
+
+The implementation uses integer arithmetic for this formula. `mean_y` is the
+average of the luma values for all sampled pixels; p10/p50/p90 are luma
+percentiles. These are values from the processed JPEG, not physical light
+measurements such as lux, and can change with the camera's exposure and image
+processing.
+
 The repository-root `./build.sh` stages this app under the SDK's
 `project/app/a-eye-night-vision-jpeg/` directory. The SDK builds it with the
 selected Rockchip toolchain and includes it in the image as
