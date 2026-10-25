@@ -1,5 +1,7 @@
 # Local Luckfox SDK, firmware tools, and build artifacts
 /sdk/
-/camera/night-vision/jpeg-processing/build/
+/camera/night-vision/build/
+/camera/night-vision/jpeg-processing/image-processor/build/
+/camera/night-vision/jpeg-processing/night-vision-service/build/
 /Luckfox_Pico_Zero_EMMC_250802_extract/image
 /images

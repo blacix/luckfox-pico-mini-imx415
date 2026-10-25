@@ -20,6 +20,8 @@ CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ_SOURCE="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 CAMERA_INI_TARGET="${OVERLAY_TARGET}/usr/share/rkipc-imx415-720p.ini"
 CAMERA_IQ_TARGET="${OVERLAY_TARGET}/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
+NIGHT_VISION_SCRIPT_SOURCE="${OVERLAY_SOURCE}/usr/bin/night-vision.sh"
+NIGHT_VISION_SCRIPT_TARGET="${BIN_TARGET}/night-vision.sh"
 NIGHT_VISION_APP_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing"
 NIGHT_VISION_COMMON_SOURCE="${ROOT_DIR}/camera/night-vision/common"
 NIGHT_VISION_APP_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-jpeg"
@@ -63,6 +65,11 @@ if [[ ! -f "${CAMERA_DRIVER_SOURCE}" ]]; then
     exit 1
 fi
 
+if [[ ! -f "${NIGHT_VISION_SCRIPT_SOURCE}" ]]; then
+    echo "Missing tracked night-vision service script: ${NIGHT_VISION_SCRIPT_SOURCE}" >&2
+    exit 1
+fi
+
 if [[ ! -f "${NIGHT_VISION_APP_SOURCE}/Makefile" ||
       ! -f "${NIGHT_VISION_APP_SOURCE}/main.cpp" ||
       ! -f "${NIGHT_VISION_COMMON_SOURCE}/brightness_metrics.h" ||
@@ -95,6 +102,7 @@ mkdir -p "${OVERLAY_TARGET}"
 rm -f -- "${INIT_TARGET}"/S99a-eye*
 rm -f -- \
     "${BIN_TARGET}/rkipc-supervisor.sh" \
+    "${NIGHT_VISION_SCRIPT_TARGET}" \
     "${CAMERA_INI_TARGET}" \
     "${CAMERA_IQ_TARGET}"
 
@@ -125,8 +133,10 @@ cp -- "${KERNEL_CONFIG_SOURCE}" "${KERNEL_CONFIG_TARGET}"
 
 echo "Preparing project files in the SDK rootfs overlay"
 mkdir -p "${INIT_TARGET}" "${BIN_TARGET}"
-cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-led" "${INIT_TARGET}/"
+cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-night-vision" "${INIT_TARGET}/"
 cp -- "${OVERLAY_SOURCE}/usr/bin/test-pwm-led.sh" "${BIN_TARGET}/"
+cp -- "${NIGHT_VISION_SCRIPT_SOURCE}" "${NIGHT_VISION_SCRIPT_TARGET}"
+chmod 0755 "${NIGHT_VISION_SCRIPT_TARGET}"
 
 if [[ "${CAMERA}" == "imx415" ]]; then
     echo "Installing IMX415 camera service and configuration into the SDK overlay"

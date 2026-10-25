@@ -1,0 +1,87 @@
+#!/bin/sh
+
+NIGHT_VISION=/usr/bin/night-vision
+IMX415_INIT=/etc/init.d/S99a-eye-cam
+PIDFILE=/run/a-eye-night-vision.pid
+LED_BRIGHTNESS=/sys/class/leds/pwm0_led/brightness
+SHUTTER_VALUE=/sys/class/gpio/gpio116/value
+STOP_TIMEOUT=12
+
+is_running() {
+	[ -f "$PIDFILE" ] || return 1
+	pid=$(cat "$PIDFILE")
+	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+start() {
+	# GPIO3_C4 is reserved for the SC3336 MIPI reference clock in the stock
+	# camera setup. Only the IMX415 build installs this camera service and uses
+	# PC4 as the custom shutter GPIO.
+	if [ ! -x "$IMX415_INIT" ]; then
+		echo "Night vision is disabled for the stock camera build"
+		return 0
+	fi
+
+	if is_running; then
+		echo "a-eye night vision is already running"
+		return 0
+	fi
+	if [ ! -x "$NIGHT_VISION" ]; then
+		echo "Missing executable: $NIGHT_VISION" >&2
+		return 1
+	fi
+
+	rm -f "$PIDFILE"
+	if ! start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$NIGHT_VISION"; then
+		rm -f "$PIDFILE"
+		echo "Could not start night vision" >&2
+		return 1
+	fi
+	sleep 1
+	if ! is_running; then
+		rm -f "$PIDFILE"
+		echo "Night vision stopped during startup; see /tmp/night-vision.log" >&2
+		return 1
+	fi
+	echo "a-eye night vision started"
+}
+
+stop() {
+	if [ -f "$PIDFILE" ]; then
+		pid=$(cat "$PIDFILE")
+		start-stop-daemon -K -q -p "$PIDFILE" 2>/dev/null || true
+		count=0
+		while [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; do
+			count=$((count + 1))
+			if [ "$count" -ge "$STOP_TIMEOUT" ]; then
+				kill -KILL "$pid" 2>/dev/null || true
+				break
+			fi
+			sleep 1
+		done
+	fi
+	rm -f "$PIDFILE"
+
+	# Do not touch GPIO3_C4 in stock SC3336 builds; it is a camera clock pin.
+	if [ -x "$IMX415_INIT" ]; then
+		[ ! -w "$LED_BRIGHTNESS" ] || printf '0\n' > "$LED_BRIGHTNESS"
+		[ ! -w "$SHUTTER_VALUE" ] || printf '0\n' > "$SHUTTER_VALUE"
+	fi
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		stop
+		start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}" >&2
+		exit 1
+		;;
+esac

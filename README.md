@@ -39,10 +39,11 @@ remaining work is end-to-end validation on the Pico Mini.
 │   └── luckfox_rv1106_linux_defconfig
 ├── overlay/                     # Tracked rootfs overlay inputs
 │   └── a-eye/
-│       ├── etc/init.d/S99a-eye-led
+│       ├── etc/init.d/S99a-eye-night-vision
 │       ├── etc/init.d/S99a-eye-cam
 │       └── usr/bin/
 │           ├── rkipc-supervisor.sh
+│           ├── night-vision.sh
 │           └── test-pwm-led.sh
 └── sdk/                         # Local SDK and firmware tools; ignored by Git
     ├── Luckfox_Pico_Mini_Flash_250607/
@@ -147,8 +148,9 @@ The tracked project files copied into the SDK are:
 | `kernel/rv1103-luckfox-pico-ipc.dtsi` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi` |
 | `kernel/luckfox_rv1106_linux_defconfig` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig` |
 | `camera/imx415.c` | `sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c` |
-| `overlay/a-eye/etc/init.d/S99a-eye-led` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-led` (all builds) |
+| `overlay/a-eye/etc/init.d/S99a-eye-night-vision` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-night-vision` (all builds) |
 | `overlay/a-eye/usr/bin/test-pwm-led.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/test-pwm-led.sh` (all builds) |
+| `overlay/a-eye/usr/bin/night-vision.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/night-vision.sh` (all builds; automation runs for IMX415 only) |
 | `overlay/a-eye/etc/init.d/S99a-eye-cam` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-cam` (IMX415 only) |
 | `overlay/a-eye/usr/bin/rkipc-supervisor.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/rkipc-supervisor.sh` (IMX415 only) |
 | `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` (IMX415 only) |
@@ -162,8 +164,11 @@ file. In addition to copying the files above, it changes
 not replaced by a tracked project file. The script clears existing
 `/etc/init.d/S99a-eye*` services and the known IMX415 camera files from the SDK
 overlay before installing the files for the selected camera. Both builds get
-`S99a-eye-led` and `test-pwm-led.sh`. Only an IMX415 build gets
-`S99a-eye-cam`, `rkipc-supervisor.sh`, the IMX415 INI, and its IQ JSON. An
+`S99a-eye-night-vision`, `night-vision.sh`, and `test-pwm-led.sh`. The init service
+does not call the LED tester; it starts `night-vision.sh` only for the IMX415
+build, where GPIO3_C4 is the shutter line. It skips automation for SC3336,
+where that pin remains part of the camera reference-clock path. Only an IMX415
+build gets `S99a-eye-cam`, `rkipc-supervisor.sh`, the IMX415 INI, and its IQ JSON. An
 SC3336 build therefore leaves the SDK's stock camera configuration and IQ
 files in place without installing the IMX415 camera service or profile.
 
@@ -220,8 +225,8 @@ IMX415 drivers. Choose the camera attached to the board for each build:
    explicitly for the stock camera. The script selects the camera in its DTSI
    copy, enables GMAC in the Pico Mini board DTS, installs shared LED files,
    and installs the IMX415 service and camera files only for an IMX415 build.
-   It stages the JPEG night-vision app for the SDK app build, then builds all
-   components and packages `update.img`:
+   It installs the night-vision controller, stages the JPEG app for the SDK
+   app build, then builds all components and packages `update.img`:
 
    ```sh
    ./build.sh
@@ -282,17 +287,19 @@ For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
 tracked project files to the device:
 
 - `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
+- `overlay/a-eye/usr/bin/night-vision.sh` to `/usr/bin/night-vision.sh`;
 - `overlay/a-eye/usr/bin/rkipc-supervisor.sh` to
   `/usr/bin/rkipc-supervisor.sh`;
-- `overlay/a-eye/etc/init.d/S99a-eye-led` to `/etc/init.d/S99a-eye-led`;
+- `overlay/a-eye/etc/init.d/S99a-eye-night-vision` to
+  `/etc/init.d/S99a-eye-night-vision`;
 - `overlay/a-eye/etc/init.d/S99a-eye-cam` to `/etc/init.d/S99a-eye-cam`;
 - `camera/rkipc-imx415-720p.ini` to `/usr/share/rkipc-imx415-720p.ini`;
 - the camera IQ JSON to `/usr/share/iqfiles/`;
 - `imx415.ko` to `/oem/usr/ko/imx415.ko`.
 
-The script stops `rkipc`, unloads the currently loaded IMX415 module if
-present, installs and loads the new module, then restarts the LED and camera
-services. The camera service launches `rkipc` with the deployed INI and IQ
+The script stops the LED and camera services, unloads the currently loaded
+IMX415 module if present, installs and loads the new module, then starts the
+camera and night-vision services. The camera service launches `rkipc` with the deployed INI and IQ
 directory. `deploy.sh` does not remove old init-service filenames from a
 running image; flash a newly built image to apply the service rename cleanly.
 Deployment requires a connected device with a root ADB shell and a module
@@ -531,10 +538,21 @@ Because the LED consumer owns PWM0, do not export `pwm0` manually through
 The init script can also be controlled manually from the device shell:
 
 ```sh
-/etc/init.d/S99a-eye-led start
-/etc/init.d/S99a-eye-led stop
-/etc/init.d/S99a-eye-led restart
+/etc/init.d/S99a-eye-night-vision start
+/etc/init.d/S99a-eye-night-vision stop
+/etc/init.d/S99a-eye-night-vision restart
 ```
+
+On an IMX415 build, `S99a-eye-night-vision` supervises `/usr/bin/night-vision.sh`.
+The script asks `/usr/bin/night-vision-jpeg` for a sample every 10 seconds and
+uses its `mean_y` value. Its initial thresholds turn night mode on below 80 and
+back off above 100 (0 is black, 255 is white); adjust these in the script after
+collecting day and night readings. Night mode sets GPIO116 high and the PWM LED
+to half of its reported maximum brightness. Day mode sets GPIO116 low and turns
+the LED off. Invalid or missing JPEG samples do not cause a mode transition.
+`test-pwm-led.sh` remains installed for manual LED testing and is not called by
+the init service. On an SC3336 build, the service skips night mode to leave the
+camera's GPIO3_C4 reference-clock path alone.
 
 ## Optional: manually loading the module on the device
 

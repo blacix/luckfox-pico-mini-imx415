@@ -254,8 +254,9 @@ vendor application patch. Do not implement both paths by default.
   option A, add the selected JPEG decoder and calculate average grayscale
   luminance, using block/scanline processing where supported. For option B,
   consume the measurements exposed by the patched `rkipc`.
-- Make the sampling interval and thresholds configurable. Begin with roughly
-  one measurement per second and smooth measurements over time.
+- Make the sampling interval and thresholds configurable. The current JPEG
+  controller samples every 10 seconds, using configurable mean-luma thresholds
+  of 80 to enter night mode and 100 to return to day mode.
 - Use separate thresholds for entering and leaving night mode, require
   sustained conditions, and allow the image to settle after a mode change.
 - Record observed minimum and maximum brightness for diagnostics. Do not use
@@ -268,20 +269,21 @@ vendor application patch. Do not implement both paths by default.
   return is detected while IR illumination is active, for example through
   controlled IR-off measurements, to prevent repeated day/night switching.
 
-### 4. Integrate shutter and infrared LED control
+### 4. Integrate shutter and infrared LED control — implemented, validate
 
-- Control the shutter through GPIO3_C4 (`RK_PC4`, currently Linux GPIO116),
-  using the existing documented GPIO commands as the starting point. Confirm
-  which level selects day and night before automating transitions.
-- Control the infrared LEDs through the existing PWM LED interface. Stop the
-  LED test service while automatic night mode owns that output, and establish
-  the operating brightness and shutdown behavior.
+- `S99a-eye-night-vision` now supervises `/usr/bin/night-vision.sh` on IMX415 builds.
+  The script reads `mean_y` from the JPEG app every 10 seconds, drives
+  GPIO3_C4 / GPIO116 high for night and low for day, and uses half of the PWM
+  LED's reported maximum brightness in night mode. Verify shutter polarity,
+  thresholds, and transitions on the device.
+- Keep `test-pwm-led.sh` installed for manual checks; the init service does not
+  run it. The service skips night-mode automation for SC3336 because PC4 is
+  used on that camera's reference-clock path.
 - Review the INI's stock IR-cut GPIOs 36 and 35 and `rkipc` startup behavior.
   Prevent stock hardware control from conflicting with the custom shutter
   and LED controller.
-- After validating the application manually, add service supervision and
-  include the required executable, configuration, and libraries in the image.
-  Document manual operation, configuration, and troubleshooting in the README.
+- The root build script now stages the service script and JPEG app into the
+  image. Validate this integration with a full build and camera-connected run.
 
 ### 5. Validate on the Pico Mini
 
