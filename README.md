@@ -49,8 +49,9 @@ remaining work is end-to-end validation on the Pico Mini.
     │   └── Stock firmware images and update files
     ├── luckfox-pico/
     │   └── LuckFox Pico SDK source tree
+    ├── upgrade_tool -> upgrade_tool_v2_17/
     └── upgrade_tool_v2_17/
-        └── Firmware upgrade utility and supporting files
+        └── Downloaded firmware upgrade utility and supporting files
 ```
 
 ### Documentation
@@ -74,6 +75,24 @@ The directory is intentionally ignored in the root `.gitignore` because it is
 large and contains vendor tools and firmware artifacts. A fresh checkout must
 therefore be supplied with the required SDK and firmware files separately.
 
+### Install the upgrade tool
+
+Download the LuckFox/Rockchip upgrade-tool package and extract it inside
+`sdk/`. The README commands use the unversioned path `sdk/upgrade_tool/`.
+Either create a link from that name to the extracted versioned directory:
+
+```sh
+ln -sr sdk/upgrade_tool_v2_17 sdk/upgrade_tool
+```
+
+Run this from the repository root. `-r` makes the link target relative to
+`sdk/upgrade_tool`, so the `sdk/...` source and destination paths work as
+written. Replace `upgrade_tool_v2_17` with the directory name produced by your
+download.
+Alternatively, move or extract the package directory itself to
+`sdk/upgrade_tool/` instead of creating a link. The tool is not installed on
+`PATH`.
+
 ### Flashing the stock image
 
 The stock firmware image is located at:
@@ -82,11 +101,10 @@ The stock firmware image is located at:
 sdk/Luckfox_Pico_Mini_Flash_250607/update.img
 ```
 
-`upgrade_tool` is included locally and is not installed on `PATH`. From the
-repository root, run:
+From the repository root, run:
 
 ```sh
-./sdk/upgrade_tool_v2_17/upgrade_tool uf \
+./sdk/upgrade_tool/upgrade_tool uf \
   ./sdk/Luckfox_Pico_Mini_Flash_250607/update.img
 ```
 
@@ -209,7 +227,7 @@ IMX415 drivers. Choose the camera attached to the board for each build:
 4. Flash the generated image to the board:
 
    ```sh
-   ./sdk/upgrade_tool_v2_17/upgrade_tool uf \
+   ./sdk/upgrade_tool/upgrade_tool uf \
      ./sdk/luckfox-pico/output/image/update.img
    ```
 5. After the board boots, test the PWM LED using the section below. Validate
@@ -392,11 +410,11 @@ If it is detected as `Maskrom`, load the SDK's generated loader into RAM with
 `DB`; this does not write it to flash. From the repository root:
 
 ```sh
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool LD
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool DB \
+sudo ./sdk/upgrade_tool/upgrade_tool LD
+sudo ./sdk/upgrade_tool/upgrade_tool DB \
   sdk/luckfox-pico/output/image/download.bin
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool LD
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool PL
+sudo ./sdk/upgrade_tool/upgrade_tool LD
+sudo ./sdk/upgrade_tool/upgrade_tool PL
 ```
 
 `PL` prints the device's parameter partition table. On the current firmware it
@@ -418,20 +436,20 @@ NO  LBA        Size       Name
 To save each listed partition separately, run these from the repository root:
 
 ```sh
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000000 0x00000200 env.img
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000200 0x00000200 idblock.img
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000400 0x00000400 uboot.img
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00000800 0x00002000 boot.img
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00002800 0x0000f000 oem.img
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00011800 0x00003000 userdata.img
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL 0x00014800 0x0002a800 rootfs.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00000000 0x00000200 env.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00000200 0x00000200 idblock.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00000400 0x00000400 uboot.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00000800 0x00002000 boot.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00002800 0x0000f000 oem.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00011800 0x00003000 userdata.img
+sudo ./sdk/upgrade_tool/upgrade_tool RL 0x00014800 0x0002a800 rootfs.img
 ```
 
 To save the whole listed partition range as one contiguous raw LBA image, read
 from LBA 0 for `0x3f000` sectors (the end of `rootfs`):
 
 ```sh
-sudo ./sdk/upgrade_tool_v2_17/upgrade_tool RL \
+sudo ./sdk/upgrade_tool/upgrade_tool RL \
   0x00000000 0x0003f000 spi-nand-partitioned.img
 ```
 
@@ -636,7 +654,7 @@ sdk/luckfox-pico/output/image/update.img
 Flash it from the repository root with the local upgrade tool:
 
 ```sh
-./sdk/upgrade_tool_v2_17/upgrade_tool uf \
+./sdk/upgrade_tool/upgrade_tool uf \
   ./sdk/luckfox-pico/output/image/update.img
 ```
 
