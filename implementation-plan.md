@@ -74,3 +74,225 @@ Build and flash the IMX415 image, then verify:
 
 The register-level description and mode table are in the README section
 [IMX415 two-lane 1080p sensor mode](README.md#imx415-two-lane-1080p-sensor-mode).
+
+## Automatic night mode — ongoing
+
+**Status: Ongoing.** Compare the snapshot and `rkipc` patch options below before
+choosing the measurement source. Implementation and camera-connected
+validation remain to be done.
+
+Create a small C++ application for the Pico Mini that obtains brightness
+measurements and controls the night-mode shutter and infrared LEDs. Keep the
+existing `rkipc` camera ownership and RTSP stream. The measurement source can
+be JPEG snapshots requested through the existing API, or statistics exposed by
+a small `rkipc` patch. OpenCV is not required for either approach.
+
+### 1. Compare measurement and decoding options
+
+#### Option A: Request JPEG snapshots through the existing API
+
+Keep `rkipc` unchanged where its existing snapshot and storage behavior is
+sufficient. The separate application requests a JPEG, waits for capture to
+complete, decodes it, and calculates average grayscale brightness.
+
+Candidate decoders, available as source for cross compilation with the SDK's
+ARM/uClibc toolchain:
+
+| Decoder | Integration and memory approach | Tradeoffs |
+| --- | --- | --- |
+| [TJpgDec](https://elm-chan.org/fsw/tjpgd/) | Small C module, grayscale block callbacks, a few KiB of decoder working memory, and scaling down to 1/8 | First candidate for minimum footprint; baseline JPEG only. Sum pixels in callbacks without storing a full image. |
+| [picojpeg](https://github.com/richgel999/picojpeg) | One C source and header, approximately 2.3 KiB working memory, block decoding, no dynamic allocation, and 1/8 reduction mode | Baseline JPEG only; slower decoding and global state make it less convenient for concurrent use. |
+| [stb_image](https://github.com/nothings/stb/blob/master/stb_image.h) | Single header with JPEG-only compilation and grayscale output | Simple integration and progressive JPEG support, but allocates the full decoded output plus internal buffers. A 1280x720 grayscale output alone takes 900 KiB. |
+| [libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | C library with grayscale, scanline decoding, scaled decompression, and ARM optimizations | More build integration and a larger library; useful if decoding speed or broader JPEG support justifies it. |
+
+- Confirm the actual hardware-produced JPEG format before selecting a
+  baseline-only decoder. Cross-compilation and compatibility with a captured
+  snapshot have not yet been validated.
+- For TJpgDec, evaluate 1/8 grayscale decoding: a 1280x720 snapshot becomes
+  160x90 for analysis. Accumulate pixel sum and count in the output callback,
+  then discard each block. No complete decoded image is needed.
+- Treat published decoder working-memory figures as excluding application
+  memory, stack, and any additional buffers. Measure the final executable
+  size, peak RAM, and processing time while RTSP is active.
+
+#### Option B: Patch `rkipc` to expose measurements
+
+Keep the mode decisions and GPIO/PWM control in the separate C++ application.
+Add a small measurement API to `rkipc`, accessed through its local socket, so
+the application does not need JPEG snapshots or a decoder.
+
+- First investigate the existing AIQ context owned by `rkipc`. The SDK API
+  `rk_aiq_user_api2_ae_queryExpResInfo()` provides mean luminance, exposure
+  settings, and exposure-limit information. Expose the required values with
+  sample freshness/validity information; do not create a second ISP owner.
+- Validate which statistics are meaningful for this sensor and IQ profile.
+  ISP mean luminance need not match the mean of the final JPEG. Exposure time
+  and gain may provide a better indication of darkness than compensated
+  image brightness alone.
+- If image-derived measurements are needed instead, evaluate a small raw
+  NV12 frame consumer inside `rkipc` and calculate brightness from the Y
+  plane. Configure the channel and queue depth explicitly, respect stride,
+  and release frames promptly. Extra capture buffers must fit the Pico Mini.
+- Keep socket requests bounded and avoid blocking the camera/encoder threads.
+  Return an unavailable/stale result when the pipeline has no valid sample.
+- Account for the maintenance cost: track the SDK source patch and make its
+  application, rebuild, and deployment reproducible in this repository.
+
+##### Code-level design for option B
+
+This is a proposed design, pending selection of option B. The SDK has not been
+patched for this feature. Paths below are relative to
+`sdk/luckfox-pico/project/app/rkipc/rkipc/` unless stated otherwise.
+
+1. **Add the measurement getter in `common/isp/rv1106/isp.c` and declare it
+   in the adjacent `isp.h`.** The current `src/rv1103_ipc/CMakeLists.txt`
+   compiles this ISP directory. Add
+   `rk_isp_get_light_measurement(int cam_id, struct rk_light_measurement *out)`
+   using the existing AIQ context and
+   `rk_aiq_user_api2_ae_queryExpResInfo()`. Initially support camera 0 in
+   normal, non-HDR mode and return explicit errors for unsupported modes or
+   unavailable measurements.
+
+   | Measurement | SDK field in `Uapi_ExpQueryInfo_t` |
+   | --- | --- |
+   | Mean luminance | `LinAeInfo.MeanLuma` |
+   | Exposure time | `LinAeInfo.LinearExp.integration_time` |
+   | Analog gain | `LinAeInfo.LinearExp.analog_gain` |
+   | Digital gain | `LinAeInfo.LinearExp.digital_gain` |
+   | ISP digital gain | `LinAeInfo.LinearExp.isp_dgain` |
+   | Exposure converged | `IsConverged` |
+   | Exposure limit reached | `IsExpMax` |
+
+   Check API return values, output pointers, camera IDs including negative
+   IDs, and finite/range-valid values. Document units and calibrate thresholds
+   against the sensor/IQ profile; the ISP statistic is not necessarily the
+   arithmetic mean of the displayed image.
+
+2. **Synchronize queries with ISP initialization and destruction.** Socket
+   handlers run in separate threads, and `rk_isp_set_hdr()` can call
+   `rk_isp_deinit()` and `rk_isp_init()` while the process remains running.
+   Add a mutex shared by the new getter and the context lifecycle, plus a
+   running-state flag. Publish availability only after a successful start,
+   invalidate it before teardown, and prevent queries from using a destroyed
+   context. Cover failure/early-return paths and release the lock before any
+   socket I/O. Use a consistent locking scheme that avoids nested locking
+   through the existing initialization helpers.
+
+3. **Add one socket command in `common/socket_server/server.c`.** Implement
+   `ser_rk_isp_get_light_measurement(int fd)` and register
+   `rk_isp_get_light_measurement` in the existing function map. Read the camera
+   ID, invoke the getter, and send the measurements and operation status using
+   the existing `/var/tmp/rkipc` protocol, including its final dispatcher
+   acknowledgement. Define a compact versioned response and serialize fields
+   explicitly rather than sending the vendor structure or relying on compiler
+   padding. Check complete reads/writes and bound client-side waits.
+
+4. **Establish measurement freshness.** The exposure-query result has no frame
+   ID. A query timestamp records when the API was called, not when a new frame
+   arrived. Evaluate the nonblocking
+   `rk_aiq_uapi2_sysctl_get3AStats()` API and its statistics `frame_id` to detect
+   lack of frame advancement. Verify availability and memory cost on the
+   installed firmware. Exposure and statistics queries are separate calls, so
+   do not claim exact frame correspondence between their results. Define
+   handling for startup, frame-counter reset/wrap, ISP reinitialization, and
+   stale results. Identical brightness values alone are not evidence of a
+   stalled camera.
+
+5. **Build a diagnostic C++ client first.** Adapt the SDK socket-client pattern
+   to request the new command roughly once per second and print luminance,
+   exposure, gains, validity, and freshness information. Keep mode decisions
+   and GPIO/PWM control in this application. An on-demand statistics query
+   needs no additional periodic sampling thread or full image buffer in
+   `rkipc`. Validate query latency and concurrent RTSP behavior before adding
+   automated transitions.
+
+6. **Integrate the SDK patch reproducibly.** Track the patch in this repository
+   and arrange its application and rebuild through the project workflow.
+   The RV1103 target already compiles the ISP and socket-server sources and
+   links `rkaiq` and `pthread`; edits confined to these existing sources and
+   headers should require no new library or CMake source-list entry. Rebuild
+   and deploy `/oem/usr/bin/rkipc` as well as the new client. Validate the
+   rebuilt binary against the installed vendor libraries, retain a rollback
+   binary for development, and test service recovery and ISP reinitialization.
+
+Follow-up investigation: explain why the RV1103 target selects
+`common/isp/rv1106` in its CMake configuration. Trace the SDK's shared ISP code
+and hardware/library selection before deciding whether this is an issue;
+the directory name alone does not establish a device mismatch.
+
+Choose between A and B based on measured resources, the reliability of the
+brightness decision, storage requirements, and the cost of maintaining a
+vendor application patch. Do not implement both paths by default.
+
+### 2. Validate the existing RKIPC snapshot API if selecting option A
+
+- Follow the SDK's client implementation in
+  `project/app/ipcweb/ipcweb-backend/src/socket_client/client.cpp` and its
+  socket helpers. Reuse or adapt only the required communication code in the
+  new application; the complete web backend is not needed.
+- Connect to the Unix socket `/var/tmp/rkipc` and request `rk_take_photo`.
+  Preserve the server's capture status: the supplied client wrapper currently
+  overwrites it with the result of `cli_end()`.
+- With the camera attached, verify that the installed `rkipc` exposes this
+  API, JPEG capture succeeds, and RTSP continues during capture. The current
+  INI already sets `video.source:enable_jpeg = 1`.
+- Verify the storage prerequisite. The RV1103 implementation rejects a
+  snapshot unless its storage subsystem reports `DISK_MOUNTED`. With the
+  current INI, snapshots are timestamped JPEGs under `/userdata/video0/`.
+- Choose a supported temporary destination in RAM for repeated monitoring,
+  checking that it satisfies the storage subsystem. Avoid accumulating files
+  or repeatedly writing snapshots to flash. Establish whether configuration
+  alone is sufficient before considering a change to `rkipc`.
+- Handle asynchronous completion: the API returns a request status, not image
+  bytes, a filename, or a completed-file notification. Detect the new image
+  and confirm it is complete before decoding; use a timeout and handle failed
+  captures without changing night-mode state.
+
+### 3. Implement measurement processing and mode decisions
+
+- Cross-compile the application with the SDK's ARM/uClibc toolchain. For
+  option A, add the selected JPEG decoder and calculate average grayscale
+  luminance, using block/scanline processing where supported. For option B,
+  consume the measurements exposed by the patched `rkipc`.
+- Make the sampling interval and thresholds configurable. Begin with roughly
+  one measurement per second and smooth measurements over time.
+- Use separate thresholds for entering and leaving night mode, require
+  sustained conditions, and allow the image to settle after a mode change.
+- Record observed minimum and maximum brightness for diagnostics. Do not use
+  lifetime extrema as the sole calibration for switching thresholds.
+- Evaluate auto-exposure compensation: mean brightness can stay similar as
+  exposure time and gain rise in darkness. Test whether image brightness is
+  sufficient. If it is not, evaluate exposure/gain information through option
+  B before committing to an image-only decision algorithm.
+- Account for the infrared LEDs brightening the image. Define how daylight
+  return is detected while IR illumination is active, for example through
+  controlled IR-off measurements, to prevent repeated day/night switching.
+
+### 4. Integrate shutter and infrared LED control
+
+- Control the shutter through GPIO3_C4 (`RK_PC4`, currently Linux GPIO116),
+  using the existing documented GPIO commands as the starting point. Confirm
+  which level selects day and night before automating transitions.
+- Control the infrared LEDs through the existing PWM LED interface. Stop the
+  LED test service while automatic night mode owns that output, and establish
+  the operating brightness and shutdown behavior.
+- Review the INI's stock IR-cut GPIOs 36 and 35 and `rkipc` startup behavior.
+  Prevent stock hardware control from conflicting with the custom shutter
+  and LED controller.
+- After validating the application manually, add service supervision and
+  include the required executable, configuration, and libraries in the image.
+  Document manual operation, configuration, and troubleshooting in the README.
+
+### 5. Validate on the Pico Mini
+
+- Test day-to-night and night-to-day transitions, changing scenes, short light
+  disturbances, and the effect of IR illumination on the measured brightness.
+- Confirm continuous RTSP operation, correct shutter/LED states, bounded
+  temporary storage, and acceptable CPU/RAM use during sustained streaming.
+- Test capture/measurement timeouts, `rkipc` restarts, application restarts,
+  and shutdown.
+  Reconnect to the socket after service recovery and avoid switching hardware
+  based on missing or stale measurements.
+- Measure resources with the camera and RTSP active. The earlier idle-device
+  memory reading does not establish the available processing headroom during
+  streaming; no camera was connected during that inspection.

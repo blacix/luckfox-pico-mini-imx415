@@ -20,6 +20,9 @@ CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ_SOURCE="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 CAMERA_INI_TARGET="${OVERLAY_TARGET}/usr/share/rkipc-imx415-720p.ini"
 CAMERA_IQ_TARGET="${OVERLAY_TARGET}/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
+NIGHT_VISION_APP_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing"
+NIGHT_VISION_COMMON_SOURCE="${ROOT_DIR}/camera/night-vision/common"
+NIGHT_VISION_APP_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-jpeg"
 
 if [[ "$#" -gt 1 ]]; then
     echo "Usage: $0 [sc3336|imx415] (default: imx415)" >&2
@@ -57,6 +60,14 @@ fi
 
 if [[ ! -f "${CAMERA_DRIVER_SOURCE}" ]]; then
     echo "Missing tracked IMX415 camera driver: ${CAMERA_DRIVER_SOURCE}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${NIGHT_VISION_APP_SOURCE}/Makefile" ||
+      ! -f "${NIGHT_VISION_APP_SOURCE}/main.cpp" ||
+      ! -f "${NIGHT_VISION_COMMON_SOURCE}/brightness_metrics.h" ||
+      ! -f "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgd.c" ]]; then
+    echo "Missing JPEG night-vision application source or TJpgDec files" >&2
     exit 1
 fi
 
@@ -128,6 +139,22 @@ fi
 
 echo "Copying tracked IMX415 driver into the SDK kernel source tree"
 cp -- "${CAMERA_DRIVER_SOURCE}" "${CAMERA_DRIVER_TARGET}"
+
+echo "Staging the JPEG night-vision app for the SDK application build"
+mkdir -p \
+    "${NIGHT_VISION_APP_TARGET}/common" \
+    "${NIGHT_VISION_APP_TARGET}/tjpgd3/src"
+cp -- "${NIGHT_VISION_APP_SOURCE}/Makefile" \
+    "${NIGHT_VISION_APP_TARGET}/Makefile"
+cp -- "${NIGHT_VISION_APP_SOURCE}/main.cpp" \
+    "${NIGHT_VISION_APP_TARGET}/main.cpp"
+cp -- "${NIGHT_VISION_COMMON_SOURCE}/brightness_metrics.h" \
+    "${NIGHT_VISION_APP_TARGET}/common/brightness_metrics.h"
+cp -- \
+    "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgd.c" \
+    "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgd.h" \
+    "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgdcnf.h" \
+    "${NIGHT_VISION_APP_TARGET}/tjpgd3/src/"
 
 cd "${SDK_DIR}"
 

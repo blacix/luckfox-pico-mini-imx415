@@ -153,6 +153,7 @@ The tracked project files copied into the SDK are:
 | `overlay/a-eye/usr/bin/rkipc-supervisor.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/rkipc-supervisor.sh` (IMX415 only) |
 | `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` (IMX415 only) |
 | `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` (IMX415 only) |
+| `camera/night-vision/jpeg-processing/` and shared `brightness_metrics.h` | `sdk/luckfox-pico/project/app/a-eye-night-vision-jpeg/` (staged and built for all camera selections) |
 
 `build.sh` is the tracked build entry point; it is not an SDK configuration
 file. In addition to copying the files above, it changes
@@ -181,7 +182,10 @@ Make camera, kernel, and rootfs changes in the tracked files under `kernel/`,
 `overlay/`, and `camera/`. Change the root `build.sh` when the SDK
 synchronization or build steps need updating. It copies tracked kernel inputs,
 driver source, and the files required for the selected camera into the SDK
-before building. The stock Pico Mini BoardConfig already selects the init
+before building. It also stages the JPEG night-vision app in the SDK app tree.
+The SDK builds it with the selected Rockchip toolchain and includes it at
+`/usr/bin/night-vision-jpeg`; the app is not started automatically. The stock
+Pico Mini BoardConfig already selects the init
 overlay, so no custom BoardConfig is needed. The tracked DTSI contains the
 SC3336 and IMX415 nodes, the CSI-2 graph, PWM0 LED setup, and enables `&gmac`
 for wired Ethernet.
@@ -216,7 +220,8 @@ IMX415 drivers. Choose the camera attached to the board for each build:
    explicitly for the stock camera. The script selects the camera in its DTSI
    copy, enables GMAC in the Pico Mini board DTS, installs shared LED files,
    and installs the IMX415 service and camera files only for an IMX415 build.
-   It then builds all components and packages `update.img`:
+   It stages the JPEG night-vision app for the SDK app build, then builds all
+   components and packages `update.img`:
 
    ```sh
    ./build.sh

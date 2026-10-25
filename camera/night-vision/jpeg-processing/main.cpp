@@ -6,7 +6,7 @@
  */
 
 #include "tjpgd.h"
-#include "../common/brightness_metrics.h"
+#include "brightness_metrics.h"
 
 #include <algorithm>
 #include <array>

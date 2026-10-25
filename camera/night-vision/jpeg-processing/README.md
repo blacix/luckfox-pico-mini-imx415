@@ -10,29 +10,32 @@ source and sample dimensions, mean luma, p10/p50/p90 luma, and minimum and
 maximum luma. It removes the processed JPEG by default; `--keep-snapshots`
 preserves it. The usage output lists the path and sampling interval options.
 
-Cross-compile from the repository root with the SDK toolchain:
+The repository-root `./build.sh` stages this source and Makefile under the
+SDK's `project/app/a-eye-night-vision-jpeg/` directory before the SDK build.
+The SDK then builds it with the other application packages and includes it in
+the image as `/usr/bin/night-vision-jpeg`. It is not started automatically.
+
+Build it standalone with the SDK's ARM/uClibc toolchain:
 
 ```sh
-TOOLCHAIN=sdk/luckfox-pico/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin
-"$TOOLCHAIN/arm-rockchip830-linux-uclibcgnueabihf-gcc" \
-  -std=c99 -O2 -Wall -Wextra \
-  -Icamera/night-vision/jpeg-processing/tjpgd3/src \
-  -c camera/night-vision/jpeg-processing/tjpgd3/src/tjpgd.c \
-  -o /tmp/tjpgd.o
-"$TOOLCHAIN/arm-rockchip830-linux-uclibcgnueabihf-g++" \
-  -std=c++11 -O2 -Wall -Wextra \
-  -Icamera/night-vision/jpeg-processing/tjpgd3/src \
-  -Icamera/night-vision/common \
-  camera/night-vision/jpeg-processing/main.cpp /tmp/tjpgd.o \
-  -pthread -o camera/night-vision/jpeg-processing/night-vision-jpeg
+make -C camera/night-vision/jpeg-processing
 ```
 
-Run on the device while RKIPC is running and JPEG snapshots are enabled in its
-configuration:
+The executable is written to `camera/night-vision/jpeg-processing/build/`.
+Override `SDK_ROOT`, `TOOLCHAIN_DIR`, or `CROSS_COMPILE` when using a separately
+installed SDK toolchain. Clean the generated files with:
 
 ```sh
-./night-vision-jpeg
-./night-vision-jpeg --interval-sec 5
+make -C camera/night-vision/jpeg-processing clean
+```
+
+Copy the resulting executable to the device to run it while RKIPC is running
+and JPEG snapshots are enabled in its configuration:
+
+```sh
+adb push camera/night-vision/jpeg-processing/build/night-vision-jpeg /tmp/night-vision-jpeg
+adb shell /tmp/night-vision-jpeg
+adb shell /tmp/night-vision-jpeg --interval-sec 5
 ```
 
 The snapshot directory must be mounted and writable by RKIPC. Override it with
