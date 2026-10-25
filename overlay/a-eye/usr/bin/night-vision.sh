@@ -6,9 +6,14 @@ LED_DIR=/sys/class/leds/pwm0_led
 GPIO_EXPORT=/sys/class/gpio/export
 GPIO_DIR=/sys/class/gpio/gpio116
 LOG_FILE=/tmp/night-vision.log
-NIGHT_ON_THRESHOLD=100
-DAY_ON_THRESHOLD=110
+CONFIG_FILE=/etc/default/a-eye-night-vision
+NIGHT_ON_THRESHOLD=90
+DAY_ON_THRESHOLD=100
 INTERVAL_SECONDS=5
+
+if [ -r "$CONFIG_FILE" ]; then
+	. "$CONFIG_FILE"
+fi
 
 log() {
 	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"

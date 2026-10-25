@@ -7,6 +7,7 @@ MODULE="${ROOT_DIR}/sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/module
 LED_TEST="${ROOT_DIR}/overlay/a-eye/usr/bin/test-pwm-led.sh"
 RKIPC_SUPERVISOR="${ROOT_DIR}/overlay/a-eye/usr/bin/rkipc-supervisor.sh"
 INIT_SCRIPT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-night-vision"
+NIGHT_VISION_CONFIG="${ROOT_DIR}/overlay/a-eye/etc/default/a-eye-night-vision"
 NIGHT_VISION_SHELL_SCRIPT="${ROOT_DIR}/overlay/a-eye/usr/bin/night-vision.sh"
 NIGHT_VISION_SERVICE_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision"
 NIGHT_VISION_IMAGE_PROCESSOR_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision-jpeg"
@@ -17,6 +18,7 @@ REMOTE_MODULE=/tmp/imx415.ko
 REMOTE_SCRIPT=/tmp/test-pwm-led.sh
 REMOTE_RKIPC_SUPERVISOR=/tmp/rkipc-supervisor.sh
 REMOTE_INIT=/tmp/S99a-eye-night-vision
+REMOTE_NIGHT_VISION_CONFIG=/tmp/a-eye-night-vision
 REMOTE_NIGHT_VISION_SHELL_SCRIPT=/tmp/night-vision.sh
 REMOTE_NIGHT_VISION_SERVICE_BIN=/tmp/night-vision
 REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN=/tmp/night-vision-jpeg
@@ -26,6 +28,7 @@ REMOTE_CAMERA_IQ=/tmp/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 INSTALLED_SCRIPT=/usr/bin/test-pwm-led.sh
 INSTALLED_RKIPC_SUPERVISOR=/usr/bin/rkipc-supervisor.sh
 INSTALLED_INIT=/etc/init.d/S99a-eye-night-vision
+INSTALLED_NIGHT_VISION_CONFIG=/etc/default/a-eye-night-vision
 INSTALLED_NIGHT_VISION_SHELL_SCRIPT=/usr/bin/night-vision.sh
 INSTALLED_NIGHT_VISION_SERVICE_BIN=/usr/bin/night-vision
 INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN=/usr/bin/night-vision-jpeg
@@ -52,6 +55,11 @@ fi
 
 if [[ ! -f "${INIT_SCRIPT}" ]]; then
     echo "Missing init script: ${INIT_SCRIPT}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${NIGHT_VISION_CONFIG}" ]]; then
+    echo "Missing night-vision configuration: ${NIGHT_VISION_CONFIG}" >&2
     exit 1
 fi
 
@@ -101,6 +109,9 @@ adb push "${RKIPC_SUPERVISOR}" "${REMOTE_RKIPC_SUPERVISOR}"
 echo "Pushing init script"
 adb push "${INIT_SCRIPT}" "${REMOTE_INIT}"
 
+echo "Pushing night-vision configuration"
+adb push "${NIGHT_VISION_CONFIG}" "${REMOTE_NIGHT_VISION_CONFIG}"
+
 echo "Pushing optional night-vision shell controller"
 adb push "${NIGHT_VISION_SHELL_SCRIPT}" "${REMOTE_NIGHT_VISION_SHELL_SCRIPT}"
 
@@ -135,6 +146,8 @@ adb shell "
     mv '${REMOTE_RKIPC_SUPERVISOR}' '${INSTALLED_RKIPC_SUPERVISOR}'
     chmod 0755 '${REMOTE_INIT}'
     mv '${REMOTE_INIT}' '${INSTALLED_INIT}'
+    mkdir -p /etc/default
+    mv '${REMOTE_NIGHT_VISION_CONFIG}' '${INSTALLED_NIGHT_VISION_CONFIG}'
     chmod 0755 '${REMOTE_NIGHT_VISION_SERVICE_BIN}' '${REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN}'
     mv '${REMOTE_NIGHT_VISION_SERVICE_BIN}' '${INSTALLED_NIGHT_VISION_SERVICE_BIN}'
     mv '${REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN}' '${INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN}'

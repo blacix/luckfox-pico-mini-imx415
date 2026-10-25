@@ -52,6 +52,7 @@ remaining work is end-to-end validation on the Pico Mini.
 ├── overlay/                     # Tracked rootfs overlay inputs
 │   └── a-eye/
 │       ├── etc/init.d/S99a-eye-night-vision
+│       ├── etc/default/a-eye-night-vision
 │       ├── etc/init.d/S99a-eye-cam
 │       └── usr/bin/
 │           ├── rkipc-supervisor.sh
@@ -161,6 +162,7 @@ The tracked project files copied into the SDK are:
 | `kernel/luckfox_rv1106_linux_defconfig` | `sdk/luckfox-pico/sysdrv/source/kernel/arch/arm/configs/luckfox_rv1106_linux_defconfig` |
 | `camera/imx415.c` | `sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c` |
 | `overlay/a-eye/etc/init.d/S99a-eye-night-vision` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-night-vision` (all builds) |
+| `overlay/a-eye/etc/default/a-eye-night-vision` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/default/a-eye-night-vision` (all builds) |
 | `overlay/a-eye/usr/bin/test-pwm-led.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/test-pwm-led.sh` (all builds) |
 | `overlay/a-eye/usr/bin/night-vision.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/night-vision.sh` (all builds; optional manual controller) |
 | `overlay/a-eye/etc/init.d/S99a-eye-cam` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-cam` (IMX415 only) |
@@ -177,9 +179,10 @@ file. In addition to copying the files above, it changes
 not replaced by a tracked project file. The script clears existing
 `/etc/init.d/S99a-eye*` services and the known IMX415 camera files from the SDK
 overlay before installing the files for the selected camera. Both builds get
-`S99a-eye-night-vision` and `test-pwm-led.sh`. The init service does not call
-the LED tester; it starts the compiled `/usr/bin/night-vision` app only for the
-IMX415 build, where GPIO3_C4 is the shutter line. IMX415 builds also include
+`S99a-eye-night-vision`, its settings file, and `test-pwm-led.sh`. The init
+service does not call the LED tester; it starts the compiled
+`/usr/bin/night-vision` app on both builds. On IMX415, GPIO3_C4 is the shutter
+line. IMX415 builds also include
 `night-vision.sh` as an optional manual alternative; do not run it alongside
 the C++ service. On SC3336 the service still switches the PWM LED, but leaves
 GPIO3_C4 untouched because it carries the camera reference clock. Only an IMX415
@@ -313,6 +316,8 @@ tracked project files to the device:
   `/usr/bin/rkipc-supervisor.sh`;
 - `overlay/a-eye/etc/init.d/S99a-eye-night-vision` to
   `/etc/init.d/S99a-eye-night-vision`;
+- `overlay/a-eye/etc/default/a-eye-night-vision` to
+  `/etc/default/a-eye-night-vision`;
 - `overlay/a-eye/etc/init.d/S99a-eye-cam` to `/etc/init.d/S99a-eye-cam`;
 - `camera/rkipc-imx415-720p.ini` to `/usr/share/rkipc-imx415-720p.ini`;
 - the camera IQ JSON to `/usr/share/iqfiles/`;
@@ -568,13 +573,18 @@ The init script can also be controlled manually from the device shell:
 On both camera builds, `S99a-eye-night-vision` supervises
 `/usr/bin/night-vision`. The C++ controller asks
 `/usr/bin/night-vision-jpeg` for a sample every 5 seconds and uses its `mean_y`
-value. `mean_y` is the average pixel luma calculated from the decoded JPEG
+value. The init script reads `/etc/default/a-eye-night-vision` and passes its
+settings as command-line options; the C++ executable does not read that file
+itself. Edit the tracked `overlay/a-eye/etc/default/a-eye-night-vision` before
+building, or edit the installed file on the device and restart the service.
+`mean_y` is the
+average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
-exposure and image processing. The defaults, calibrated from the supplied
-SC3336 samples, turn night mode on below 100 and back off above 110 (0 is black,
-255 is white); override them with
-`--night-on`, `--day-on`, and `--interval-sec`. Night mode sets the PWM LED to
+exposure and image processing. The current settings enter night mode below 90
+and return to day mode above 100 (0 is black, 255 is white). The C++ program
+also accepts `--night-on`, `--day-on`, and `--interval-sec` overrides. Night
+mode sets the PWM LED to
 half of its reported maximum brightness. On IMX415, it also sets GPIO116 high
 for night and low for day; on SC3336, it leaves GPIO116 untouched because the
 pin carries the camera reference clock. Day mode turns the LED off. Invalid or

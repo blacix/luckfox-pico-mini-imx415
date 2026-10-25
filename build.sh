@@ -13,7 +13,10 @@ KERNEL_CONFIG_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/configs/luckfox_r
 OVERLAY_SOURCE="${ROOT_DIR}/overlay/a-eye"
 OVERLAY_TARGET="${SDK_DIR}/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init"
 INIT_TARGET="${OVERLAY_TARGET}/etc/init.d"
+DEFAULT_TARGET="${OVERLAY_TARGET}/etc/default"
 BIN_TARGET="${OVERLAY_TARGET}/usr/bin"
+NIGHT_VISION_CONFIG_SOURCE="${OVERLAY_SOURCE}/etc/default/a-eye-night-vision"
+NIGHT_VISION_CONFIG_TARGET="${DEFAULT_TARGET}/a-eye-night-vision"
 CAMERA_DRIVER_SOURCE="${ROOT_DIR}/camera/imx415.c"
 CAMERA_DRIVER_TARGET="${SDK_DIR}/sysdrv/source/kernel/drivers/media/i2c/imx415.c"
 CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
@@ -68,6 +71,11 @@ fi
 if [[ ! -f "${NIGHT_VISION_SERVICE_SOURCE}/Makefile" ||
       ! -f "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" ]]; then
     echo "Missing night-vision service source or Makefile" >&2
+    exit 1
+fi
+
+if [[ ! -f "${NIGHT_VISION_CONFIG_SOURCE}" ]]; then
+    echo "Missing night-vision configuration: ${NIGHT_VISION_CONFIG_SOURCE}" >&2
     exit 1
 fi
 
@@ -133,8 +141,9 @@ echo "Copying tracked kernel config into the SDK"
 cp -- "${KERNEL_CONFIG_SOURCE}" "${KERNEL_CONFIG_TARGET}"
 
 echo "Preparing project files in the SDK rootfs overlay"
-mkdir -p "${INIT_TARGET}" "${BIN_TARGET}"
+mkdir -p "${INIT_TARGET}" "${DEFAULT_TARGET}" "${BIN_TARGET}"
 cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-night-vision" "${INIT_TARGET}/"
+cp -- "${NIGHT_VISION_CONFIG_SOURCE}" "${NIGHT_VISION_CONFIG_TARGET}"
 cp -- "${OVERLAY_SOURCE}/usr/bin/test-pwm-led.sh" "${BIN_TARGET}/"
 cp -- "${OVERLAY_SOURCE}/usr/bin/night-vision.sh" "${BIN_TARGET}/"
 chmod 0755 "${BIN_TARGET}/night-vision.sh"

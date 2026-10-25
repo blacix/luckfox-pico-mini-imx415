@@ -254,11 +254,11 @@ vendor application patch. Do not implement both paths by default.
   option A, add the selected JPEG decoder and calculate average grayscale
   luminance, using block/scanline processing where supported. For option B,
   consume the measurements exposed by the patched `rkipc`.
-- Make the sampling interval and thresholds configurable. The current JPEG
-  controller samples every 5 seconds, using configurable mean-luma thresholds
-  of 100 to enter night mode and 110 to return to day mode. These values
-  separate the provided SC3336 normal-light mean (114.648) and dark-condition
-  mean (93.153); validate them across more scenes and exposure conditions.
+- The init script reads `/etc/default/a-eye-night-vision` and passes the
+  thresholds and interval to the controller; the tracked settings currently enter
+  night mode below mean luma 90 and return to day mode above 100. Validate
+  these values across more scenes and exposure conditions. The earlier supplied
+  SC3336 samples were 114.648 in normal light and 93.153 in the dark condition.
 - Use separate thresholds for entering and leaving night mode, require
   sustained conditions, and allow the image to settle after a mode change.
 - Record observed minimum and maximum brightness for diagnostics. Do not use
@@ -275,7 +275,8 @@ vendor application patch. Do not implement both paths by default.
 
 - `S99a-eye-night-vision` supervises the compiled `/usr/bin/night-vision`
   controller on both camera builds. It reads `mean_y` from the JPEG app every
-  5 seconds and uses half of the PWM LED's reported maximum brightness in
+  5 seconds using values from `/etc/default/a-eye-night-vision`, and uses half
+  of the PWM LED's reported maximum brightness in
   night mode. On IMX415 it also drives GPIO3_C4 / GPIO116 high for night and
   low for day; on SC3336 it leaves that reference-clock pin untouched.
   Verify shutter polarity, thresholds, and transitions on the device.

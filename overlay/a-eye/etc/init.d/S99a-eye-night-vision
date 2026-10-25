@@ -1,11 +1,19 @@
 #!/bin/sh
 
 NIGHT_VISION=/usr/bin/night-vision
+CONFIG_FILE=/etc/default/a-eye-night-vision
 IMX415_INIT=/etc/init.d/S99a-eye-cam
 PIDFILE=/run/a-eye-night-vision.pid
 LED_BRIGHTNESS=/sys/class/leds/pwm0_led/brightness
 SHUTTER_VALUE=/sys/class/gpio/gpio116/value
 STOP_TIMEOUT=12
+NIGHT_ON_THRESHOLD=90
+DAY_ON_THRESHOLD=100
+INTERVAL_SECONDS=5
+
+if [ -r "$CONFIG_FILE" ]; then
+	. "$CONFIG_FILE"
+fi
 
 is_running() {
 	[ -f "$PIDFILE" ] || return 1
@@ -24,7 +32,10 @@ start() {
 	fi
 
 	rm -f "$PIDFILE"
-	if ! start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$NIGHT_VISION"; then
+	if ! start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$NIGHT_VISION" -- \
+		--night-on "$NIGHT_ON_THRESHOLD" \
+		--day-on "$DAY_ON_THRESHOLD" \
+		--interval-sec "$INTERVAL_SECONDS"; then
 		rm -f "$PIDFILE"
 		echo "Could not start night vision" >&2
 		return 1
