@@ -59,7 +59,6 @@ remaining work is end-to-end validation on the Pico Mini.
   installed drivers, firmware contents, and hardware compatibility questions.
 - `implementation-plan.md` lists the remaining camera-selection and 1080p
   validation work.
-- `review.md` tracks unresolved startup and runtime questions.
 
 ### `sdk/`
 
@@ -735,5 +734,4 @@ image-quality, restart, and reboot validation is tracked in
 ## Related documentation
 
 See [camera.md](camera.md) for board and pipeline details,
-[implementation-plan.md](implementation-plan.md) for remaining validation,
-and [review.md](review.md) for open review items.
+[implementation-plan.md](implementation-plan.md) for remaining validation.

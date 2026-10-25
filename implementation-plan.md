@@ -12,6 +12,9 @@
   IMX415, check whether the SDK launcher starts `rkipc` before the project
   service. For SC3336, confirm the stock launcher uses the SC3336 INI and OEM IQ
   directory.
+- Observe `/tmp/rkipc.log` during a sustained IMX415 session. It is truncated
+  between attempts but is not capped while `rkipc` runs; decide whether further
+  limits are needed based on actual growth.
 
 ### 2. Validate the 1080p sensor mode through the complete camera pipeline
 
