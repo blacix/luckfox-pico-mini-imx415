@@ -368,8 +368,7 @@ imx415: imx415@1a {
   status = "okay";
   reg = <0x1a>;
 
-  clocks = <&cru MCLK_REF_MIPI0>;
-  clock-names = "xvclk";
+  /* The camera module supplies xvclk from its onboard oscillator. */
 
   /*
    * These GPIO and regulator properties must be adapted
@@ -382,7 +381,7 @@ imx415: imx415@1a {
   // dvdd-supply = <...>;
 
   pinctrl-names = "default";
-  pinctrl-0 = <&mipi_refclk_out0>;
+  pinctrl-0 = <&gpio3_c4>;
 
   rockchip,camera-module-index = <0>;
   rockchip,camera-module-facing = "back";
@@ -400,10 +399,15 @@ imx415: imx415@1a {
 
 The address 0x1a is only an example. The actual address must be determined from the camera module documentation or by checking the module with an I²C probe.
 
+For the module-clock configuration, the device-tree node does not request a
+SoC `xvclk`; the driver accepts its absence and leaves the module oscillator
+in control. GPIO3_C4 is muxed as GPIO. The oscillator frequency still needs to
+match the selected sensor mode.
+
 The following must not be copied blindly:
 
 I²C address
-xvclk frequency
+module oscillator frequency and sensor-mode timing
 reset GPIO
 power-down GPIO
 power rail names

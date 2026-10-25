@@ -2919,15 +2919,17 @@ int __imx415_power_on(struct imx415 *imx415)
 		/* fix power on timing if insmod this ko */
 		usleep_range(10 * 1000, 20 * 1000);
 	}
-	ret = clk_set_rate(imx415->xvclk, imx415->cur_mode->xvclk);
-	if (ret < 0)
-		dev_warn(dev, "Failed to set xvclk rate\n");
-	if (clk_get_rate(imx415->xvclk) != imx415->cur_mode->xvclk)
-		dev_warn(dev, "xvclk mismatched\n");
-	ret = clk_prepare_enable(imx415->xvclk);
-	if (ret < 0) {
-		dev_err(dev, "Failed to enable xvclk\n");
-		goto err_clk;
+	if (imx415->xvclk) {
+		ret = clk_set_rate(imx415->xvclk, imx415->cur_mode->xvclk);
+		if (ret < 0)
+			dev_warn(dev, "Failed to set xvclk rate\n");
+		if (clk_get_rate(imx415->xvclk) != imx415->cur_mode->xvclk)
+			dev_warn(dev, "xvclk mismatched\n");
+		ret = clk_prepare_enable(imx415->xvclk);
+		if (ret < 0) {
+			dev_err(dev, "Failed to enable xvclk\n");
+			goto err_clk;
+		}
 	}
 
 	cam_sw_regulator_bulk_init(imx415->cam_sw_inf, IMX415_NUM_SUPPLIES, imx415->supplies);
@@ -2947,7 +2949,8 @@ int __imx415_power_on(struct imx415 *imx415)
 	return 0;
 
 err_pinctrl:
-	clk_disable_unprepare(imx415->xvclk);
+	if (imx415->xvclk)
+		clk_disable_unprepare(imx415->xvclk);
 
 err_clk:
 	if (!IS_ERR(imx415->reset_gpio))
@@ -2974,7 +2977,8 @@ static void __imx415_power_off(struct imx415 *imx415)
 
 	if (!IS_ERR(imx415->reset_gpio))
 		gpiod_direction_output(imx415->reset_gpio, 1);
-	clk_disable_unprepare(imx415->xvclk);
+	if (imx415->xvclk)
+		clk_disable_unprepare(imx415->xvclk);
 	if (!IS_ERR_OR_NULL(imx415->pins_sleep)) {
 		ret = pinctrl_select_state(imx415->pinctrl,
 					   imx415->pins_sleep);
@@ -3487,11 +3491,14 @@ static int imx415_probe(struct i2c_client *client,
 	of_property_read_u32(node, RKMODULE_CAMERA_FASTBOOT_ENABLE,
 		&imx415->is_thunderboot);
 
-	imx415->xvclk = devm_clk_get(dev, "xvclk");
+	/* An absent xvclk means the camera module supplies its own clock. */
+	imx415->xvclk = devm_clk_get_optional(dev, "xvclk");
 	if (IS_ERR(imx415->xvclk)) {
-		dev_err(dev, "Failed to get xvclk\n");
-		return -EINVAL;
+		return dev_err_probe(dev, PTR_ERR(imx415->xvclk),
+				     "Failed to get xvclk\n");
 	}
+	if (!imx415->xvclk)
+		dev_info(dev, "No xvclk supplied; using the camera module clock\n");
 
 	imx415->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
 	if (IS_ERR(imx415->reset_gpio))

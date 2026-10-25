@@ -264,11 +264,10 @@
 		compatible = "sony,imx415";
 		status = "okay";
 		reg = <0x37>;
-		clocks = <&cru MCLK_REF_MIPI0>;
-		clock-names = "xvclk";
 		reset-gpios = <&gpio3 RK_PC5 GPIO_ACTIVE_LOW>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&mipi_refclk_out0>;
+		/* The camera module's oscillator provides xvclk; PC4 is GPIO3_C4. */
+		pinctrl-0 = <&gpio3_c4>;
 		rockchip,camera-module-index = <0>;
 		rockchip,camera-module-facing = "back";
 		/*
@@ -469,6 +468,12 @@
 	gpio1-pc7 {
 		gpio1_pc7: gpio1-pc7 {
 			rockchip,pins = <1 RK_PC7 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	gpio3 {
+		gpio3_c4: gpio3-c4 {
+			rockchip,pins = <3 RK_PC4 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 };

@@ -594,9 +594,10 @@ grep -n -E "sc3336|sc4336|sc530ai|mipi|csi2|endpoint|ff470000" \
 ```
 
 Preserve both sensor nodes and their endpoint definitions. The working IMX415
-configuration uses I²C address `0x37`, the CRU MIPI camera clock,
-`mipi_refclk_out0`, GPIO3 PC5 as active-low reset, and two CSI-2 lanes. Its
-camera-module and lens names are `CMK-OT2022-PX1` and
+configuration uses I²C address `0x37`, the camera module's onboard oscillator,
+GPIO3_C4 as a GPIO, GPIO3 PC5 as active-low reset, and two CSI-2 lanes. The
+driver treats `xvclk` as optional for this configuration. Its camera-module
+and lens names are `CMK-OT2022-PX1` and
 `IR0147-36IRC-8M-F20`, matching the IQ file. The build selection changes the
 active SC3336 and IMX415 node statuses in the SDK copy.
 
@@ -623,9 +624,9 @@ camera:
 - For `imx415`, the IMX415 node is enabled and D-PHY input 3 connects to
   `imx415_out`.
 - The other camera nodes are disabled in each generated SDK DTSI.
-- IMX415 uses I²C address `0x37`, the existing CRU MIPI camera clock and
-  GPIO3 PC5 as active-low reset, and the SDK driver’s
-  `rockchip,camera_default` pinctrl state with `mipi_refclk_out0`.
+- IMX415 uses I²C address `0x37`, the camera module's onboard oscillator,
+  GPIO3 PC5 as active-low reset, and GPIO3_C4 in GPIO mode. SCxxxx nodes retain
+  `MCLK_REF_MIPI0` and `mipi_refclk_out0`.
 - IMX415 camera-module and lens names match the bundled tuning profile:
   `CMK-OT2022-PX1` and `IR0147-36IRC-8M-F20`.
 - The ST7789 display node is commented out because its D/C signal used
