@@ -137,6 +137,11 @@
 };
 
 /*****************************CSI ********************************/
+/*
+ * The input endpoints below represent the camera profiles supported by this
+ * board's CSI graph. The build selects the attached sensor in the I2C nodes;
+ * for the current IMX415 profile, its two-lane link is routed through input 3.
+ */
 &csi2_dphy_hw {
 	status = "okay";
 };
@@ -174,7 +179,8 @@
 			csi_dphy_input3: endpoint@3 {
 				reg = <3>;
 				remote-endpoint = <&imx415_out>;
-				data-lanes = <1 2>; /* IMX415 uses this two-lane CSI input. */
+				/* The IMX415 profile uses D-PHY input 3 and two CSI-2 lanes. */
+				data-lanes = <1 2>;
 			};
 		};
 
@@ -197,6 +203,13 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c4m2_xfer>;
 
+	/*
+	 * These nodes describe alternative camera-module builds on the shared
+	 * camera connector. The SC sensors share I2C address 0x30 and use the
+	 * SoC-generated MIPI reference clock; the IMX415 is at 0x37 and uses its
+	 * module oscillator. Enable the node matching the attached module. The
+	 * sensor endpoints map to separate D-PHY inputs; IMX415 uses input 3.
+	 */
 	sc3336: sc3336@30 {
 		compatible = "smartsens,sc3336";
 		status = "disabled";
@@ -264,9 +277,20 @@
 		compatible = "sony,imx415";
 		status = "okay";
 		reg = <0x37>;
+		/* PC5 is the sensor's active-low reset; PC4 below is the shutter line. */
 		reset-gpios = <&gpio3 RK_PC5 GPIO_ACTIVE_LOW>;
 		pinctrl-names = "default";
-		/* Module oscillator provides xvclk; GPIO3_C4 controls the night shutter. */
+		/*
+		 * This module has an onboard oscillator, so deliberately omit the
+		 * "clocks" / "clock-names" properties used by the SC sensor nodes.
+		 * The IMX415 driver treats xvclk as optional and does not try to
+		 * enable a SoC clock when it is absent.
+		 *
+		 * GPIO3_C4 means GPIO bank 3, port C, pin 4 (RK_PC4 in the pinctrl
+		 * binding). It is muxed as a plain GPIO for the module's night-mode
+		 * shutter switch (Linux global GPIO 116 on this SoC). The driver
+		 * does not own or toggle it; userspace controls the shutter.
+		 */
 		pinctrl-0 = <&gpio3_c4>;
 		rockchip,camera-module-index = <0>;
 		rockchip,camera-module-facing = "back";
@@ -282,6 +306,7 @@
 		rockchip,camera-module-lens-name = "IR0147-36IRC-8M-F20";
 		port {
 			imx415_out: endpoint {
+				/* Matches the driver's two-lane mode table and D-PHY input 3. */
 				remote-endpoint = <&csi_dphy_input3>;
 				data-lanes = <1 2>;
 			};
@@ -473,6 +498,13 @@
 
 	gpio3 {
 		gpio3_c4: gpio3-c4 {
+			/*
+			 * GPIO3_C4 is bank 3, port C, pin 4, written RK_PC4 below. Select
+			 * its GPIO mux with no pull. It used to carry the SC-camera MIPI
+			 * reference clock; IMX415 has its own oscillator, so PC4 can serve
+			 * as the night-mode shutter line. The sensor driver does not request
+			 * it; userspace can export GPIO 116 and set its output state.
+			 */
 			rockchip,pins = <3 RK_PC4 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};

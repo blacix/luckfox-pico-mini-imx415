@@ -29,6 +29,21 @@
  * 3. enum all supported mode mbus_code, not just cur_mode.
  * V0.0X01.0X08
  * 1. add dcphy param for hdrx2 mode.
+ *
+ * Project-specific downstream notes:
+ * - The Pico Mini uses the two-lane mode table when the firmware endpoint
+ *   describes two CSI-2 data lanes. Its first mode reads the full field of
+ *   view with 2x2 binning (1944x1097); the CIF/ISP selection rectangle then
+ *   crops that pad image to 1920x1080. The sensor itself is not programmed
+ *   for a 1920x1080 window in this mode.
+ * - The camera module used here has its own oscillator. The DT therefore
+ *   omits the optional "xvclk" clock, and power sequencing skips SoC clock
+ *   control when that clock is absent. Modules with a SoC-provided xvclk can
+ *   continue to describe it and use the normal clock setup path.
+ * - GPIO3_C4 means GPIO bank 3, port C, pin 4 (the DTS pin constant is
+ *   RK_PC4). The board DT configures it for the module's night-mode shutter.
+ *   This sensor driver does not request or drive that GPIO; it remains
+ *   available to userspace.
  */
 
 #define DEBUG
@@ -1119,6 +1134,25 @@ static __maybe_unused const struct regval imx415_linear_12bit_3864x2192_891M_reg
 };
 
 /*
+ * Pico Mini two-lane full-field mode used for the 1080p camera pipeline.
+ * The sensor's 2x2 line binning produces 1944x1097 at the pad. The Rockchip
+ * CIF/ISP crop is reported separately by imx415_get_selection() as a centered
+ * 1920x1080 rectangle, preserving the full field of view before that crop.
+ *
+ * These values describe the sensor's register programming, not the final
+ * application frame size. Keep the matching mode-table metadata below in
+ * sync with this list: 12-bit output, two CSI-2 lanes, 445.5MHz link
+ * frequency, 27MHz sensor clock, and 25fps timing (HTS=2200, VTS=2700).
+ * This register sequence comes from the working patched IMX415 camera mode.
+ * The key groups are: 0x3000/0x3002 standby and master-stop sequencing;
+ * 0x301C disables the old window crop; 0x3020-0x3022 select binned readout;
+ * 0x3024-0x3029 set VMAX/HMAX; 0x3031-0x3033 set ADC/output and link mode;
+ * 0x4001 selects two CSI-2 lanes. The 0x32xx-0x3Bxx and 0x4018-0x4029
+ * writes provide supporting sensor/MIPI timing and readout tuning. Keep this
+ * as one table: those settings together define the mode. See the README's
+ * register table for the values and decoded timing.
+ */
+/*
  * Xclk 27Mhz
  * 25fps
  * CSI-2_2lane
@@ -1705,7 +1739,16 @@ static const struct imx415_mode supported_modes[] = {
 
 static const struct imx415_mode supported_modes_2lane[] = {
 	{
-		/* Binned full-FOV readout; downstream ISP crops to 1920x1080. */
+		/*
+		 * Default Pico Mini mode: two-lane linear RAW12 readout, with a
+		 * 445.5MHz link (891Mbps per lane), 27MHz sensor reference, and a
+		 * 25fps mode ceiling. HMAX=1100 and VMAX=2700 yield driver
+		 * HTS=2200 and minimum VTS=2700. vts_min prevents VBLANK controls
+		 * from requesting timing below this characterized sensor mode.
+		 * The 1944x1097 sensor pad is the full-field 2x2-binned image;
+		 * get_selection() exposes the aligned centered 1920x1080 crop used
+		 * by CIF/ISP. Keep this pad size distinct from the final crop size.
+		 */
 		.bus_fmt = MEDIA_BUS_FMT_SGBRG12_1X12,
 		.width = 1944,
 		.height = 1097,
@@ -1723,6 +1766,7 @@ static const struct imx415_mode supported_modes_2lane[] = {
 		.mipi_freq_idx = 5,
 		.bpp = 12,
 		.vc[PAD0] = V4L2_MBUS_CSI2_CHANNEL_0,
+		/* Expected sensor reference; the Pico Mini supplies it onboard. */
 		.xvclk = IMX415_XVCLK_FREQ_27M,
 	},
 	{
@@ -1793,6 +1837,7 @@ static const s64 link_freq_items[] = {
 	MIPI_FREQ_743M,
 	MIPI_FREQ_891M,
 	MIPI_FREQ_1188M,
+	/* Appended for the 1080p mode; existing mode indices above stay stable. */
 	MIPI_FREQ_445_5M,
 };
 
@@ -1952,6 +1997,10 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 #endif
 	} else {
 		imx415_change_mode(imx415, mode);
+		/* Mode changes alter blanking and CSI throughput. Keep V4L2's
+		 * exposure, VBLANK, link-frequency, and pixel-rate controls aligned
+		 * with the selected register table; use vts_min when the mode sets it.
+		 */
 		h_blank = mode->hts_def - mode->width;
 		__v4l2_ctrl_modify_range(imx415->hblank, h_blank,
 					 h_blank, 1, h_blank);
@@ -2051,6 +2100,9 @@ static int imx415_g_frame_interval(struct v4l2_subdev *sd,
 	u8 lanes = imx415->bus_cfg.bus.mipi_csi2.num_data_lanes;
 
 	if (mode->vts_min) {
+		/* Report the interval from the live VTS so extra VBLANK is reflected;
+		 * the fixed max_fps value would be wrong after VBLANK is increased.
+		 */
 		fi->interval.numerator = imx415->cur_vts;
 		fi->interval.denominator =
 			((u32)link_freq_items[mode->mipi_freq_idx] / mode->bpp *
@@ -2784,6 +2836,9 @@ static int __imx415_start_stream(struct imx415 *imx415)
 	int ret;
 
 	if (!imx415->is_thunderboot) {
+		/* Two-lane modes provide a complete per-mode register list and have
+		 * no shared global table. Apply that table only when a mode supplies it.
+		 */
 		if (imx415->cur_mode->global_reg_list) {
 			ret = imx415_write_array(imx415->client,
 						 imx415->cur_mode->global_reg_list);
@@ -2920,6 +2975,10 @@ int __imx415_power_on(struct imx415 *imx415)
 		usleep_range(10 * 1000, 20 * 1000);
 	}
 	if (imx415->xvclk) {
+		/* The Pico Mini module has its own oscillator and omits xvclk in DT.
+		 * Keep SoC clock setup for modules that do describe an xvclk, but do
+		 * not request or toggle a SoC MIPI reference clock for this module.
+		 */
 		ret = clk_set_rate(imx415->xvclk, imx415->cur_mode->xvclk);
 		if (ret < 0)
 			dev_warn(dev, "Failed to set xvclk rate\n");
@@ -2949,6 +3008,7 @@ int __imx415_power_on(struct imx415 *imx415)
 	return 0;
 
 err_pinctrl:
+	/* Undo the optional SoC clock enable if later power-up steps fail. */
 	if (imx415->xvclk)
 		clk_disable_unprepare(imx415->xvclk);
 
@@ -2977,6 +3037,9 @@ static void __imx415_power_off(struct imx415 *imx415)
 
 	if (!IS_ERR(imx415->reset_gpio))
 		gpiod_direction_output(imx415->reset_gpio, 1);
+	/* Only gate a SoC-provided xvclk. The module oscillator is not controlled
+	 * by this driver and remains outside the sensor's runtime power sequence.
+	 */
 	if (imx415->xvclk)
 		clk_disable_unprepare(imx415->xvclk);
 	if (!IS_ERR_OR_NULL(imx415->pins_sleep)) {
@@ -3122,6 +3185,12 @@ static int imx415_get_selection(struct v4l2_subdev *sd,
 			sel->r.top = CROP_START(imx415->cur_mode->height, DST_HEIGHT_2160);
 			sel->r.height = DST_HEIGHT_2160;
 		} else if (imx415->cur_mode->width == 1944) {
+			/*
+			 * The 1944x1097 binned sensor frame contains the full field of
+			 * view. Report the centered 1920x1080 crop for the Rockchip
+			 * CIF/ISP path. CROP_START aligns the offsets to 4 pixels, giving
+			 * left=12 and top=8 for this mode; the sensor pad stays 1944x1097.
+			 */
 			sel->r.left = CROP_START(imx415->cur_mode->width, DST_WIDTH_1920);
 			sel->r.width = DST_WIDTH_1920;
 			sel->r.top = CROP_START(imx415->cur_mode->height, DST_HEIGHT_1080);
@@ -3471,6 +3540,12 @@ static int imx415_probe(struct i2c_client *client,
 	}
 
 	imx415->client = client;
+	/* The firmware endpoint's data-lanes property selects the matching mode
+	 * family: four lanes use the original table; the Pico Mini's two-lane
+	 * endpoint selects supported_modes_2lane[], whose first entry is the
+	 * binned 1080p pipeline mode. Lane count also participates in pixel-rate
+	 * calculation, so it must match the device-tree CSI endpoint.
+	 */
 	if (imx415->bus_cfg.bus.mipi_csi2.num_data_lanes == IMX415_4LANES) {
 		imx415->supported_modes = supported_modes;
 		imx415->cfg_num = ARRAY_SIZE(supported_modes);
@@ -3491,7 +3566,10 @@ static int imx415_probe(struct i2c_client *client,
 	of_property_read_u32(node, RKMODULE_CAMERA_FASTBOOT_ENABLE,
 		&imx415->is_thunderboot);
 
-	/* An absent xvclk means the camera module supplies its own clock. */
+	/* The Pico Mini IMX415 module has an onboard oscillator. devm_clk_get_optional
+	 * lets this DT omit xvclk; if another module provides a SoC clock, the same
+	 * driver's power-on/off paths still acquire and manage it.
+	 */
 	imx415->xvclk = devm_clk_get_optional(dev, "xvclk");
 	if (IS_ERR(imx415->xvclk)) {
 		return dev_err_probe(dev, PTR_ERR(imx415->xvclk),
