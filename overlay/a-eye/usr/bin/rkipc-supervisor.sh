@@ -1,6 +1,9 @@
 #!/bin/sh
 
 RKIPC=/oem/usr/bin/rkipc
+MODULE=/oem/usr/ko/imx415.ko
+I2C_DEVICE=4-0037
+DRIVER_DIR=/sys/bus/i2c/drivers/imx415
 INI=/usr/share/rkipc-imx415-720p.ini
 IQ_DIR=/usr/share/iqfiles
 IQ_FILE=${IQ_DIR}/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
@@ -13,6 +16,65 @@ stopping=0
 
 log() {
 	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOGFILE"
+}
+
+: >"$LOGFILE"
+
+module_loaded() {
+	grep -q '^imx415 ' /proc/modules
+}
+
+load_sensor_module() {
+	if module_loaded; then
+		return 0
+	fi
+	if [ ! -f "$MODULE" ]; then
+		log "Missing IMX415 kernel module: $MODULE"
+		return 1
+	fi
+
+	log "Loading IMX415 kernel module"
+	if insmod "$MODULE" >>"$LOGFILE" 2>&1; then
+		return 0
+	fi
+	if module_loaded; then
+		return 0
+	fi
+	log "Failed to load IMX415 kernel module"
+	return 1
+}
+
+wait_for_sensor() {
+	if ! load_sensor_module; then
+		return 1
+	fi
+
+	log "Waiting for IMX415 to bind on I2C device $I2C_DEVICE"
+	while [ "$stopping" -eq 0 ]; do
+		if [ -e "$DRIVER_DIR/$I2C_DEVICE" ]; then
+			log "IMX415 bound on I2C device $I2C_DEVICE"
+			return 0
+		fi
+
+		if [ -w "$DRIVER_DIR/bind" ]; then
+			printf '%s\n' "$I2C_DEVICE" >"$DRIVER_DIR/bind" 2>/dev/null || true
+		fi
+
+		if [ -e "$DRIVER_DIR/$I2C_DEVICE" ]; then
+			log "IMX415 bound on I2C device $I2C_DEVICE"
+			return 0
+		fi
+
+		if [ "$stopping" -ne 0 ]; then
+			break
+		fi
+
+		sleep "$RETRY_DELAY" &
+		timer_pid=$!
+		wait "$timer_pid"
+		timer_pid=
+	done
+	return 1
 }
 
 if [ ! -x "$RKIPC" ]; then
@@ -42,6 +104,11 @@ request_stop() {
 }
 
 trap 'request_stop' TERM INT
+
+if ! wait_for_sensor; then
+	log "IMX415 startup stopped before sensor binding"
+	exit 0
+fi
 
 while [ "$stopping" -eq 0 ]; do
 	: >"$LOGFILE"

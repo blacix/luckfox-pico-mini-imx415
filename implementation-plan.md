@@ -12,6 +12,9 @@
   IMX415, check whether the SDK launcher starts `rkipc` before the project
   service. For SC3336, confirm the stock launcher uses the SC3336 INI and OEM IQ
   directory.
+- With an IMX415 connected, confirm the supervisor loads the module and waits
+  for `/sys/bus/i2c/drivers/imx415/4-0037` before starting `rkipc`. Also confirm
+  that stopping the service interrupts the wait cleanly.
 - Observe `/tmp/rkipc.log` during a sustained IMX415 session. It is truncated
   between attempts but is not capped while `rkipc` runs; decide whether further
   limits are needed based on actual growth.

@@ -326,13 +326,16 @@ This is separate from the USB `usb0` network interface described above.
 The `rkipc` application provides the RTSP server. The main stream is available
 at `/live/0` on port 554. The tracked `/etc/init.d/S99a-eye-cam` service stops
 the stock `rkipc` process and starts `/usr/bin/rkipc-supervisor.sh`. The
-supervisor runs `/oem/usr/bin/rkipc` with
+supervisor loads `/oem/usr/ko/imx415.ko` if needed and waits until it binds to
+I²C device `4-0037` before launching `/oem/usr/bin/rkipc` with
 `/usr/share/rkipc-imx415-720p.ini` (`-c`) and `/usr/share/iqfiles` (`-a`). If
-`rkipc` exits, the supervisor retries after a fixed five-second delay. In the
-full image, `S99a-eye-cam` is in the boot init sequence and launches the
-supervisor for the IMX415 setup. After deploying changes with `./deploy.sh`,
-the service restarts immediately. This IMX415-specific service should not
-replace the stock camera process in a SC3336 setup.
+the sensor is not ready, the supervisor retries binding every five seconds and
+does not start `rkipc` until binding succeeds. If `rkipc` exits, it retries
+after the same delay. In the full image, `S99a-eye-cam` is in the boot init
+sequence and launches the supervisor for the IMX415 setup. After deploying
+changes with `./deploy.sh`, the service restarts immediately. This
+IMX415-specific service should not replace the stock camera process in a
+SC3336 setup.
 
 ```sh
 adb shell /etc/init.d/S99a-eye-cam restart
