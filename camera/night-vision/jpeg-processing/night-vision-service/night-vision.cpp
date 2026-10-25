@@ -1,17 +1,14 @@
 #include <cerrno>
 #include <csignal>
-#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <vector>
 
 namespace {
 

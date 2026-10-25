@@ -271,8 +271,9 @@ vendor application patch. Do not implement both paths by default.
 
 ### 4. Integrate shutter and infrared LED control — implemented, validate
 
-- `S99a-eye-night-vision` now supervises `/usr/bin/night-vision.sh` on IMX415 builds.
-  The script reads `mean_y` from the JPEG app every 10 seconds, drives
+- `S99a-eye-night-vision` now supervises the compiled `/usr/bin/night-vision`
+  controller on IMX415 builds. The controller reads `mean_y` from the JPEG app
+  every 10 seconds, drives
   GPIO3_C4 / GPIO116 high for night and low for day, and uses half of the PWM
   LED's reported maximum brightness in night mode. Verify shutter polarity,
   thresholds, and transitions on the device.
@@ -282,8 +283,9 @@ vendor application patch. Do not implement both paths by default.
 - Review the INI's stock IR-cut GPIOs 36 and 35 and `rkipc` startup behavior.
   Prevent stock hardware control from conflicting with the custom shutter
   and LED controller.
-- The root build script now stages the service script and JPEG app into the
-  image. Validate this integration with a full build and camera-connected run.
+- The root build script stages the JPEG image processor, C++ night-vision
+  service, and init service into the image. Validate the integration with a
+  full build and camera-connected run.
 
 ### 5. Validate on the Pico Mini
 

@@ -20,11 +20,11 @@ CAMERA_INI_SOURCE="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ_SOURCE="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
 CAMERA_INI_TARGET="${OVERLAY_TARGET}/usr/share/rkipc-imx415-720p.ini"
 CAMERA_IQ_TARGET="${OVERLAY_TARGET}/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
-NIGHT_VISION_SCRIPT_SOURCE="${OVERLAY_SOURCE}/usr/bin/night-vision.sh"
-NIGHT_VISION_SCRIPT_TARGET="${BIN_TARGET}/night-vision.sh"
-NIGHT_VISION_APP_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing"
+NIGHT_VISION_SERVICE_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing/night-vision-service"
+NIGHT_VISION_SERVICE_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-service"
+NIGHT_VISION_IMAGE_PROCESSOR_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing/image-processor"
+NIGHT_VISION_IMAGE_PROCESSOR_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-jpeg"
 NIGHT_VISION_COMMON_SOURCE="${ROOT_DIR}/camera/night-vision/common"
-NIGHT_VISION_APP_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-jpeg"
 
 if [[ "$#" -gt 1 ]]; then
     echo "Usage: $0 [sc3336|imx415] (default: imx415)" >&2
@@ -65,15 +65,16 @@ if [[ ! -f "${CAMERA_DRIVER_SOURCE}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${NIGHT_VISION_SCRIPT_SOURCE}" ]]; then
-    echo "Missing tracked night-vision service script: ${NIGHT_VISION_SCRIPT_SOURCE}" >&2
+if [[ ! -f "${NIGHT_VISION_SERVICE_SOURCE}/Makefile" ||
+      ! -f "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" ]]; then
+    echo "Missing night-vision service source or Makefile" >&2
     exit 1
 fi
 
-if [[ ! -f "${NIGHT_VISION_APP_SOURCE}/Makefile" ||
-      ! -f "${NIGHT_VISION_APP_SOURCE}/main.cpp" ||
+if [[ ! -f "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/Makefile" ||
+      ! -f "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/main.cpp" ||
       ! -f "${NIGHT_VISION_COMMON_SOURCE}/brightness_metrics.h" ||
-      ! -f "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgd.c" ]]; then
+      ! -f "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgd.c" ]]; then
     echo "Missing JPEG night-vision application source or TJpgDec files" >&2
     exit 1
 fi
@@ -102,7 +103,7 @@ mkdir -p "${OVERLAY_TARGET}"
 rm -f -- "${INIT_TARGET}"/S99a-eye*
 rm -f -- \
     "${BIN_TARGET}/rkipc-supervisor.sh" \
-    "${NIGHT_VISION_SCRIPT_TARGET}" \
+    "${BIN_TARGET}/night-vision.sh" \
     "${CAMERA_INI_TARGET}" \
     "${CAMERA_IQ_TARGET}"
 
@@ -135,8 +136,6 @@ echo "Preparing project files in the SDK rootfs overlay"
 mkdir -p "${INIT_TARGET}" "${BIN_TARGET}"
 cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-night-vision" "${INIT_TARGET}/"
 cp -- "${OVERLAY_SOURCE}/usr/bin/test-pwm-led.sh" "${BIN_TARGET}/"
-cp -- "${NIGHT_VISION_SCRIPT_SOURCE}" "${NIGHT_VISION_SCRIPT_TARGET}"
-chmod 0755 "${NIGHT_VISION_SCRIPT_TARGET}"
 
 if [[ "${CAMERA}" == "imx415" ]]; then
     echo "Installing IMX415 camera service and configuration into the SDK overlay"
@@ -150,21 +149,28 @@ fi
 echo "Copying tracked IMX415 driver into the SDK kernel source tree"
 cp -- "${CAMERA_DRIVER_SOURCE}" "${CAMERA_DRIVER_TARGET}"
 
-echo "Staging the JPEG night-vision app for the SDK application build"
+echo "Staging the JPEG image processor for the SDK application build"
 mkdir -p \
-    "${NIGHT_VISION_APP_TARGET}/common" \
-    "${NIGHT_VISION_APP_TARGET}/tjpgd3/src"
-cp -- "${NIGHT_VISION_APP_SOURCE}/Makefile" \
-    "${NIGHT_VISION_APP_TARGET}/Makefile"
-cp -- "${NIGHT_VISION_APP_SOURCE}/main.cpp" \
-    "${NIGHT_VISION_APP_TARGET}/main.cpp"
+    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/common" \
+    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/tjpgd3/src"
+cp -- "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/Makefile" \
+    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/Makefile"
+cp -- "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/main.cpp" \
+    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/main.cpp"
 cp -- "${NIGHT_VISION_COMMON_SOURCE}/brightness_metrics.h" \
-    "${NIGHT_VISION_APP_TARGET}/common/brightness_metrics.h"
+    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/common/brightness_metrics.h"
 cp -- \
-    "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgd.c" \
-    "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgd.h" \
-    "${NIGHT_VISION_APP_SOURCE}/tjpgd3/src/tjpgdcnf.h" \
-    "${NIGHT_VISION_APP_TARGET}/tjpgd3/src/"
+    "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgd.c" \
+    "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgd.h" \
+    "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgdcnf.h" \
+    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/tjpgd3/src/"
+
+echo "Staging the night-vision service for the SDK application build"
+mkdir -p "${NIGHT_VISION_SERVICE_TARGET}"
+cp -- "${NIGHT_VISION_SERVICE_SOURCE}/Makefile" \
+    "${NIGHT_VISION_SERVICE_TARGET}/Makefile"
+cp -- "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" \
+    "${NIGHT_VISION_SERVICE_TARGET}/night-vision.cpp"
 
 cd "${SDK_DIR}"
 
