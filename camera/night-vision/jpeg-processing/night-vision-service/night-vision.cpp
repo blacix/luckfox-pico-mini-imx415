@@ -5,6 +5,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include "rkipc_saturation.h"
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -19,9 +20,10 @@ constexpr char kGpioExport[] = "/sys/class/gpio/export";
 constexpr char kGpioDirectory[] = "/sys/class/gpio/gpio116";
 constexpr unsigned int kShutterGpio = 116;
 constexpr char kLogFile[] = "/tmp/night-vision.log";
+constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
 constexpr double kDefaultNightOnThreshold = 100.0;
 constexpr double kDefaultDayOnThreshold = 110.0;
-constexpr unsigned int kDefaultIntervalSeconds = 10;
+constexpr unsigned int kDefaultIntervalSeconds = 5;
 
 volatile sig_atomic_t g_running = 1;
 
@@ -32,6 +34,13 @@ struct Options {
 };
 
 enum class Mode { Day, Night };
+
+struct SaturationState {
+	bool original_known = false;
+	int original_value = 0;
+	bool grayscale_applied = false;
+	std::string last_error;
+};
 
 void handle_signal(int) { g_running = 0; }
 
@@ -208,7 +217,73 @@ bool set_night_mode(Mode &mode, int led_brightness, int led_max,
 	return true;
 }
 
-void cleanup(bool shutter_control) {
+bool load_saturation_state(SaturationState &state) {
+	int value = 0;
+	if (!read_integer(kSaturationStateFile, value))
+		return false;
+	if (value < 0 || value > 100) {
+		log_message("saved daytime saturation is invalid; ignoring it");
+		unlink(kSaturationStateFile);
+		return false;
+	}
+	state.original_known = true;
+	state.original_value = value;
+	return true;
+}
+
+void log_saturation_error(SaturationState &state, const std::string &error) {
+	if (error != state.last_error) {
+		log_message("could not update RKIPC saturation: " + error);
+		state.last_error = error;
+	}
+}
+
+void apply_saturation_mode(bool night, SaturationState &state) {
+	std::string error;
+	if (night) {
+		if (!state.original_known) {
+			int current = 0;
+			if (!rkipc_saturation::get(0, current, error)) {
+				log_saturation_error(state, error);
+				return;
+			}
+			if (!write_value(kSaturationStateFile, std::to_string(current))) {
+				log_saturation_error(state,
+						     "cannot save the daytime saturation in /run");
+				return;
+			}
+			state.original_value = current;
+			state.original_known = true;
+		}
+		if (state.grayscale_applied)
+			return;
+		if (!rkipc_saturation::set(0, 0, error)) {
+			log_saturation_error(state, error);
+			return;
+		}
+		state.grayscale_applied = true;
+		state.last_error.clear();
+		log_message("night image set to grayscale; saved daytime saturation " +
+			    std::to_string(state.original_value));
+		return;
+	}
+
+	if (!state.original_known)
+		return;
+	if (!rkipc_saturation::set(0, state.original_value, error)) {
+		log_saturation_error(state, error);
+		return;
+	}
+	state.grayscale_applied = false;
+	state.original_known = false;
+	state.last_error.clear();
+	unlink(kSaturationStateFile);
+	log_message("day image restored to saturation " +
+		    std::to_string(state.original_value));
+}
+
+void cleanup(bool shutter_control, SaturationState &saturation_state) {
+	apply_saturation_mode(false, saturation_state);
 	write_value(std::string(kLedDirectory) + "/brightness", "0");
 	if (shutter_control)
 		write_value(std::string(kGpioDirectory) + "/value", "0");
@@ -288,6 +363,8 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	const int led_night_brightness = led_max / 2;
+	SaturationState saturation_state;
+	load_saturation_state(saturation_state);
 
 	Mode mode = Mode::Night;
 	if (!set_day_mode(mode, false, shutter_control))
@@ -303,6 +380,7 @@ int main(int argc, char **argv) {
 		double mean_luma = 0.0;
 		std::string error;
 		if (!capture_mean_luma(mean_luma, error)) {
+			saturation_state.grayscale_applied = false;
 			if (g_running && error != last_error) {
 				log_message("no valid JPEG brightness sample: " + error);
 				last_error = error;
@@ -319,9 +397,10 @@ int main(int argc, char **argv) {
 				set_day_mode(mode, true, shutter_control);
 			}
 		}
+		apply_saturation_mode(mode == Mode::Night, saturation_state);
 		sleep_seconds(options.interval_seconds);
 	}
 
-	cleanup(shutter_control);
+	cleanup(shutter_control, saturation_state);
 	return 0;
 }

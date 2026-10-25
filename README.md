@@ -42,6 +42,7 @@ remaining work is end-to-end validation on the Pico Mini.
 │       │   │   └── tjpgd3/
 │       │   └── night-vision-service/
 │       │       ├── night-vision.cpp
+│       │       ├── rkipc_saturation.cpp/.h
 │       │       └── Makefile
 │       └── rkipc-patch/
 ├── implementation-plan.md
@@ -564,15 +565,21 @@ The init script can also be controlled manually from the device shell:
 /etc/init.d/S99a-eye-night-vision restart
 ```
 
-On an IMX415 build, `S99a-eye-night-vision` supervises `/usr/bin/night-vision`.
-The C++ controller asks `/usr/bin/night-vision-jpeg` for a sample every 10
-seconds and uses its `mean_y` value. The defaults, calibrated from the supplied
+On both camera builds, `S99a-eye-night-vision` supervises
+`/usr/bin/night-vision`. The C++ controller asks
+`/usr/bin/night-vision-jpeg` for a sample every 5 seconds and uses its `mean_y`
+value. The defaults, calibrated from the supplied
 SC3336 samples, turn night mode on below 100 and back off above 110 (0 is black,
 255 is white); override them with
-`--night-on`, `--day-on`, and `--interval-sec`. Night mode sets GPIO116 high and
-the PWM LED to half of its reported maximum brightness. Day mode sets GPIO116
-low and turns the LED off. Invalid or missing JPEG samples do not cause a mode
+`--night-on`, `--day-on`, and `--interval-sec`. Night mode sets the PWM LED to
+half of its reported maximum brightness. On IMX415, it also sets GPIO116 high
+for night and low for day; on SC3336, it leaves GPIO116 untouched because the
+pin carries the camera reference clock. Day mode turns the LED off. Invalid or
+missing JPEG samples do not cause a mode
 transition. The controller writes status and errors to `/tmp/night-vision.log`.
+When entering night mode it also sets ISP saturation to zero through RKIPC's
+local socket API, making the existing RTSP stream grayscale. It restores the
+previous saturation in day mode and when the controller stops.
 The optional shell implementation uses the same thresholds and controls the
 same LED; on IMX415 it also controls the shutter. Stop the init service before
 running it manually so the two controllers do not compete:

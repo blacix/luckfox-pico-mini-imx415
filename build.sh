@@ -173,6 +173,10 @@ cp -- "${NIGHT_VISION_SERVICE_SOURCE}/Makefile" \
     "${NIGHT_VISION_SERVICE_TARGET}/Makefile"
 cp -- "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" \
     "${NIGHT_VISION_SERVICE_TARGET}/night-vision.cpp"
+cp -- "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_saturation.cpp" \
+    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_saturation.cpp"
+cp -- "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_saturation.h" \
+    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_saturation.h"
 
 cd "${SDK_DIR}"
 

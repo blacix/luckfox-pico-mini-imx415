@@ -8,7 +8,7 @@ GPIO_DIR=/sys/class/gpio/gpio116
 LOG_FILE=/tmp/night-vision.log
 NIGHT_ON_THRESHOLD=100
 DAY_ON_THRESHOLD=110
-INTERVAL_SECONDS=10
+INTERVAL_SECONDS=5
 
 log() {
 	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"

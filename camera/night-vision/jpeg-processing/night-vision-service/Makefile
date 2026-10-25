@@ -4,6 +4,7 @@ export LC_ALL := C
 
 BUILD_DIR ?= $(APP_DIR)/build
 OBJECT := $(BUILD_DIR)/night-vision.o
+RKIPC_SATURATION_OBJECT := $(BUILD_DIR)/rkipc_saturation.o
 CXXFLAGS ?= -std=c++11 -O2 -Wall -Wextra
 
 .PHONY: all clean print-config
@@ -38,10 +39,13 @@ endif
 $(BUILD_DIR) $(dir $(TARGET)):
 	mkdir -p $@
 
-$(OBJECT): $(APP_DIR)/night-vision.cpp | $(BUILD_DIR)
+$(OBJECT): $(APP_DIR)/night-vision.cpp $(APP_DIR)/rkipc_saturation.h | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(TARGET): $(OBJECT) | $(dir $(TARGET))
+$(RKIPC_SATURATION_OBJECT): $(APP_DIR)/rkipc_saturation.cpp $(APP_DIR)/rkipc_saturation.h | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+$(TARGET): $(OBJECT) $(RKIPC_SATURATION_OBJECT) | $(dir $(TARGET))
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 print-config:
@@ -52,4 +56,4 @@ print-config:
 	fi
 
 clean:
-	rm -f $(TARGET) $(OBJECT)
+	rm -f $(TARGET) $(OBJECT) $(RKIPC_SATURATION_OBJECT)

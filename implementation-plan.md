@@ -255,7 +255,7 @@ vendor application patch. Do not implement both paths by default.
   luminance, using block/scanline processing where supported. For option B,
   consume the measurements exposed by the patched `rkipc`.
 - Make the sampling interval and thresholds configurable. The current JPEG
-  controller samples every 10 seconds, using configurable mean-luma thresholds
+  controller samples every 5 seconds, using configurable mean-luma thresholds
   of 100 to enter night mode and 110 to return to day mode. These values
   separate the provided SC3336 normal-light mean (114.648) and dark-condition
   mean (93.153); validate them across more scenes and exposure conditions.
@@ -273,12 +273,15 @@ vendor application patch. Do not implement both paths by default.
 
 ### 4. Integrate shutter and infrared LED control — implemented, validate
 
-- `S99a-eye-night-vision` now supervises the compiled `/usr/bin/night-vision`
-  controller on IMX415 builds. The controller reads `mean_y` from the JPEG app
-  every 10 seconds, drives
-  GPIO3_C4 / GPIO116 high for night and low for day, and uses half of the PWM
-  LED's reported maximum brightness in night mode. Verify shutter polarity,
-  thresholds, and transitions on the device.
+- `S99a-eye-night-vision` supervises the compiled `/usr/bin/night-vision`
+  controller on both camera builds. It reads `mean_y` from the JPEG app every
+  5 seconds and uses half of the PWM LED's reported maximum brightness in
+  night mode. On IMX415 it also drives GPIO3_C4 / GPIO116 high for night and
+  low for day; on SC3336 it leaves that reference-clock pin untouched.
+  Verify shutter polarity, thresholds, and transitions on the device.
+- On night-mode entry the controller sets ISP saturation to zero through
+  RKIPC's local socket API and restores the saved value in day mode. Verify
+  this produces grayscale in the active RTSP stream on both SC3336 and IMX415.
 - Keep `test-pwm-led.sh` installed for manual checks; the init service does not
   run it. On SC3336 the night-vision controller changes the LED only and leaves
   PC4 untouched because it is used on that camera's reference-clock path.
