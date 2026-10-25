@@ -595,9 +595,9 @@ grep -n -E "sc3336|sc4336|sc530ai|mipi|csi2|endpoint|ff470000" \
 
 Preserve both sensor nodes and their endpoint definitions. The working IMX415
 configuration uses I²C address `0x37`, the camera module's onboard oscillator,
-GPIO3_C4 as a GPIO, GPIO3 PC5 as active-low reset, and two CSI-2 lanes. The
-driver treats `xvclk` as optional for this configuration. Its camera-module
-and lens names are `CMK-OT2022-PX1` and
+GPIO3_C4 as the night-mode shutter switch, GPIO3 PC5 as active-low reset, and
+two CSI-2 lanes. The driver treats `xvclk` as optional for this configuration.
+Its camera-module and lens names are `CMK-OT2022-PX1` and
 `IR0147-36IRC-8M-F20`, matching the IQ file. The build selection changes the
 active SC3336 and IMX415 node statuses in the SDK copy.
 
@@ -625,8 +625,8 @@ camera:
   `imx415_out`.
 - The other camera nodes are disabled in each generated SDK DTSI.
 - IMX415 uses I²C address `0x37`, the camera module's onboard oscillator,
-  GPIO3 PC5 as active-low reset, and GPIO3_C4 in GPIO mode. SCxxxx nodes retain
-  `MCLK_REF_MIPI0` and `mipi_refclk_out0`.
+  GPIO3 PC5 as active-low reset, and GPIO3_C4 as the night-mode shutter switch
+  in GPIO mode. SCxxxx nodes retain `MCLK_REF_MIPI0` and `mipi_refclk_out0`.
 - IMX415 camera-module and lens names match the bundled tuning profile:
   `CMK-OT2022-PX1` and `IR0147-36IRC-8M-F20`.
 - The ST7789 display node is commented out because its D/C signal used
@@ -635,6 +635,28 @@ camera:
   `pwm0_led` with normal polarity.
 - The tracked kernel configuration enables `CONFIG_VIDEO_SC3336=m`,
   `CONFIG_VIDEO_IMX415=m`, and `CONFIG_LEDS_PWM=y`.
+
+### Test the night-mode shutter GPIO
+
+From a root shell on the device, export GPIO3_C4 and set it as an output. On
+this RV1106 mapping, GPIO3_C4 is global GPIO 116 (bank 3 base 96 plus pin C4
+offset 20):
+
+```sh
+echo 116 > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio116/direction
+echo 1 > /sys/class/gpio/gpio116/value
+```
+
+Set it low to test the other state, then release the GPIO when finished:
+
+```sh
+echo 0 > /sys/class/gpio/gpio116/value
+echo 116 > /sys/class/gpio/unexport
+```
+
+The high and low states control the shutter; which state opens it depends on
+the camera wiring.
 
 The root-level build script is the required build entry point:
 

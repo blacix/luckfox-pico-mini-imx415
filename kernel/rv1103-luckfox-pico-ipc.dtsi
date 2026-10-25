@@ -266,7 +266,7 @@
 		reg = <0x37>;
 		reset-gpios = <&gpio3 RK_PC5 GPIO_ACTIVE_LOW>;
 		pinctrl-names = "default";
-		/* The camera module's oscillator provides xvclk; PC4 is GPIO3_C4. */
+		/* Module oscillator provides xvclk; GPIO3_C4 controls the night shutter. */
 		pinctrl-0 = <&gpio3_c4>;
 		rockchip,camera-module-index = <0>;
 		rockchip,camera-module-facing = "back";

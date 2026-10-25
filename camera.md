@@ -401,8 +401,8 @@ The address 0x1a is only an example. The actual address must be determined from 
 
 For the module-clock configuration, the device-tree node does not request a
 SoC `xvclk`; the driver accepts its absence and leaves the module oscillator
-in control. GPIO3_C4 is muxed as GPIO. The oscillator frequency still needs to
-match the selected sensor mode.
+in control. GPIO3_C4 is muxed as GPIO and controls the night-mode shutter. The
+oscillator frequency still needs to match the selected sensor mode.
 
 The following must not be copied blindly:
 
