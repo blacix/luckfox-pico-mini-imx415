@@ -2,7 +2,25 @@
 
 ## Remaining work
 
-### 1. Validate camera selection and `rkipc` startup
+### 1. Define a stock SC-camera build profile
+
+The current `build.sh` accepts `imx415` or `sc3336`. The tracked DTSI disables
+SC3336, SC4336, and SC530AI by default, while the SDK's stock startup script
+contains INI-selection branches for all three SC sensors. The SDK DTSI backup
+also had all three SC sensor nodes enabled. Decide how the project should
+preserve this stock SC-camera support alongside its IMX415 profile.
+
+- Review whether the stock flow is intended to detect whichever supported SC
+  sensor is attached, or whether the build should select one exact SC sensor.
+- Check the shared I²C address (`0x30`), MCLK, GPIO3 PC5, module index, and
+  separate CSI inputs before deciding whether multiple SC nodes can safely be
+  enabled together.
+- Check that the tracked kernel defconfig builds the SC drivers required by
+  the chosen stock-camera approach; it currently enables SC3336 and IMX415.
+- Keep the IMX415 build's custom service, INI, and IQ file separate from the
+  stock SC startup/configuration.
+
+### 2. Validate camera selection and `rkipc` startup
 
 - Build once with `./build.sh imx415` and once with `./build.sh sc3336`.
 - Inspect the SDK overlay after each build. Confirm the LED service remains in
@@ -19,7 +37,7 @@
   between attempts but is not capped while `rkipc` runs; decide whether further
   limits are needed based on actual growth.
 
-### 2. Validate the 1080p sensor mode through the complete camera pipeline
+### 3. Validate the 1080p sensor mode through the complete camera pipeline
 
 Build and flash the IMX415 image, then verify:
 
