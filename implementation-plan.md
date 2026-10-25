@@ -256,7 +256,9 @@ vendor application patch. Do not implement both paths by default.
   consume the measurements exposed by the patched `rkipc`.
 - Make the sampling interval and thresholds configurable. The current JPEG
   controller samples every 10 seconds, using configurable mean-luma thresholds
-  of 80 to enter night mode and 100 to return to day mode.
+  of 100 to enter night mode and 110 to return to day mode. These values
+  separate the provided SC3336 normal-light mean (114.648) and dark-condition
+  mean (93.153); validate them across more scenes and exposure conditions.
 - Use separate thresholds for entering and leaving night mode, require
   sustained conditions, and allow the image to settle after a mode change.
 - Record observed minimum and maximum brightness for diagnostics. Do not use
@@ -278,8 +280,8 @@ vendor application patch. Do not implement both paths by default.
   LED's reported maximum brightness in night mode. Verify shutter polarity,
   thresholds, and transitions on the device.
 - Keep `test-pwm-led.sh` installed for manual checks; the init service does not
-  run it. The service skips night-mode automation for SC3336 because PC4 is
-  used on that camera's reference-clock path.
+  run it. On SC3336 the night-vision controller changes the LED only and leaves
+  PC4 untouched because it is used on that camera's reference-clock path.
 - Review the INI's stock IR-cut GPIOs 36 and 35 and `rkipc` startup behavior.
   Prevent stock hardware control from conflicting with the custom shutter
   and LED controller.

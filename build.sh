@@ -136,6 +136,8 @@ echo "Preparing project files in the SDK rootfs overlay"
 mkdir -p "${INIT_TARGET}" "${BIN_TARGET}"
 cp -- "${OVERLAY_SOURCE}/etc/init.d/S99a-eye-night-vision" "${INIT_TARGET}/"
 cp -- "${OVERLAY_SOURCE}/usr/bin/test-pwm-led.sh" "${BIN_TARGET}/"
+cp -- "${OVERLAY_SOURCE}/usr/bin/night-vision.sh" "${BIN_TARGET}/"
+chmod 0755 "${BIN_TARGET}/night-vision.sh"
 
 if [[ "${CAMERA}" == "imx415" ]]; then
     echo "Installing IMX415 camera service and configuration into the SDK overlay"

@@ -14,14 +14,6 @@ is_running() {
 }
 
 start() {
-	# GPIO3_C4 is reserved for the SC3336 MIPI reference clock in the stock
-	# camera setup. Only the IMX415 build installs this camera service and uses
-	# PC4 as the custom shutter GPIO.
-	if [ ! -x "$IMX415_INIT" ]; then
-		echo "Night vision is disabled for the stock camera build"
-		return 0
-	fi
-
 	if is_running; then
 		echo "a-eye night vision is already running"
 		return 0
@@ -62,9 +54,10 @@ stop() {
 	fi
 	rm -f "$PIDFILE"
 
-	# Do not touch GPIO3_C4 in stock SC3336 builds; it is a camera clock pin.
+	# The PWM IR LED is safe in both camera modes. GPIO3_C4 is reserved for the
+	# SC3336 reference clock, so only reset GPIO116 on IMX415 builds.
+	[ ! -w "$LED_BRIGHTNESS" ] || printf '0\n' > "$LED_BRIGHTNESS"
 	if [ -x "$IMX415_INIT" ]; then
-		[ ! -w "$LED_BRIGHTNESS" ] || printf '0\n' > "$LED_BRIGHTNESS"
 		[ ! -w "$SHUTTER_VALUE" ] || printf '0\n' > "$SHUTTER_VALUE"
 	fi
 }

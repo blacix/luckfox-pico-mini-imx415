@@ -7,6 +7,7 @@ MODULE="${ROOT_DIR}/sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/module
 LED_TEST="${ROOT_DIR}/overlay/a-eye/usr/bin/test-pwm-led.sh"
 RKIPC_SUPERVISOR="${ROOT_DIR}/overlay/a-eye/usr/bin/rkipc-supervisor.sh"
 INIT_SCRIPT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-night-vision"
+NIGHT_VISION_SHELL_SCRIPT="${ROOT_DIR}/overlay/a-eye/usr/bin/night-vision.sh"
 NIGHT_VISION_SERVICE_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision"
 NIGHT_VISION_IMAGE_PROCESSOR_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision-jpeg"
 CAMERA_INIT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-cam"
@@ -16,6 +17,7 @@ REMOTE_MODULE=/tmp/imx415.ko
 REMOTE_SCRIPT=/tmp/test-pwm-led.sh
 REMOTE_RKIPC_SUPERVISOR=/tmp/rkipc-supervisor.sh
 REMOTE_INIT=/tmp/S99a-eye-night-vision
+REMOTE_NIGHT_VISION_SHELL_SCRIPT=/tmp/night-vision.sh
 REMOTE_NIGHT_VISION_SERVICE_BIN=/tmp/night-vision
 REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN=/tmp/night-vision-jpeg
 REMOTE_CAMERA_INIT=/tmp/S99a-eye-cam
@@ -24,6 +26,7 @@ REMOTE_CAMERA_IQ=/tmp/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 INSTALLED_SCRIPT=/usr/bin/test-pwm-led.sh
 INSTALLED_RKIPC_SUPERVISOR=/usr/bin/rkipc-supervisor.sh
 INSTALLED_INIT=/etc/init.d/S99a-eye-night-vision
+INSTALLED_NIGHT_VISION_SHELL_SCRIPT=/usr/bin/night-vision.sh
 INSTALLED_NIGHT_VISION_SERVICE_BIN=/usr/bin/night-vision
 INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN=/usr/bin/night-vision-jpeg
 INSTALLED_CAMERA_INIT=/etc/init.d/S99a-eye-cam
@@ -49,6 +52,11 @@ fi
 
 if [[ ! -f "${INIT_SCRIPT}" ]]; then
     echo "Missing init script: ${INIT_SCRIPT}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${NIGHT_VISION_SHELL_SCRIPT}" ]]; then
+    echo "Missing optional night-vision shell controller: ${NIGHT_VISION_SHELL_SCRIPT}" >&2
     exit 1
 fi
 
@@ -93,6 +101,9 @@ adb push "${RKIPC_SUPERVISOR}" "${REMOTE_RKIPC_SUPERVISOR}"
 echo "Pushing init script"
 adb push "${INIT_SCRIPT}" "${REMOTE_INIT}"
 
+echo "Pushing optional night-vision shell controller"
+adb push "${NIGHT_VISION_SHELL_SCRIPT}" "${REMOTE_NIGHT_VISION_SHELL_SCRIPT}"
+
 echo "Pushing night-vision service and JPEG image processor"
 adb push "${NIGHT_VISION_SERVICE_BIN}" "${REMOTE_NIGHT_VISION_SERVICE_BIN}"
 adb push "${NIGHT_VISION_IMAGE_PROCESSOR_BIN}" "${REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN}"
@@ -116,6 +127,8 @@ adb shell "
     if grep -q '^imx415 ' /proc/modules; then
         rmmod imx415
     fi
+    chmod 0755 '${REMOTE_NIGHT_VISION_SHELL_SCRIPT}'
+    mv '${REMOTE_NIGHT_VISION_SHELL_SCRIPT}' '${INSTALLED_NIGHT_VISION_SHELL_SCRIPT}'
     chmod 0755 '${REMOTE_SCRIPT}'
     mv '${REMOTE_SCRIPT}' '${INSTALLED_SCRIPT}'
     chmod 0755 '${REMOTE_RKIPC_SUPERVISOR}'
@@ -138,6 +151,7 @@ adb shell "
     test -x '${INSTALLED_SCRIPT}'
     test -x '${INSTALLED_RKIPC_SUPERVISOR}'
     test -x '${INSTALLED_INIT}'
+    test -x '${INSTALLED_NIGHT_VISION_SHELL_SCRIPT}'
     test -x '${INSTALLED_NIGHT_VISION_SERVICE_BIN}'
     test -x '${INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN}'
     test -x '${INSTALLED_CAMERA_INIT}'

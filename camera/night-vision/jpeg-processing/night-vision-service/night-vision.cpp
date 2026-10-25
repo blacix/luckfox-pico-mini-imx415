@@ -19,8 +19,8 @@ constexpr char kGpioExport[] = "/sys/class/gpio/export";
 constexpr char kGpioDirectory[] = "/sys/class/gpio/gpio116";
 constexpr unsigned int kShutterGpio = 116;
 constexpr char kLogFile[] = "/tmp/night-vision.log";
-constexpr double kDefaultNightOnThreshold = 80.0;
-constexpr double kDefaultDayOnThreshold = 100.0;
+constexpr double kDefaultNightOnThreshold = 100.0;
+constexpr double kDefaultDayOnThreshold = 110.0;
 constexpr unsigned int kDefaultIntervalSeconds = 10;
 
 volatile sig_atomic_t g_running = 1;
@@ -162,46 +162,58 @@ bool capture_mean_luma(double &luma, std::string &error) {
 	return true;
 }
 
-bool set_day_mode(Mode &mode, bool log_transition) {
+bool set_day_mode(Mode &mode, bool log_transition, bool shutter_control) {
 	if (!write_value(std::string(kLedDirectory) + "/brightness", "0")) {
 		log_message("could not turn off the IR LED");
 		return false;
 	}
-	sleep_seconds(1);
-	if (!write_value(std::string(kGpioDirectory) + "/value", "0")) {
+	if (shutter_control)
+		sleep_seconds(1);
+	if (shutter_control &&
+	    !write_value(std::string(kGpioDirectory) + "/value", "0")) {
 		log_message("could not set GPIO116 low for day mode");
 		return false;
 	}
 	const bool changed = mode != Mode::Day;
 	mode = Mode::Day;
-	if (log_transition && changed)
-		log_message("day mode: shutter low, IR LED off");
+	if (log_transition && changed) {
+		log_message(shutter_control ? "day mode: shutter low, IR LED off"
+					    : "day mode: IR LED off (shutter unchanged)");
+	}
 	return true;
 }
 
-bool set_night_mode(Mode &mode, int led_brightness, int led_max) {
-	if (!write_value(std::string(kGpioDirectory) + "/value", "1")) {
+bool set_night_mode(Mode &mode, int led_brightness, int led_max,
+		    bool shutter_control) {
+	if (shutter_control &&
+	    !write_value(std::string(kGpioDirectory) + "/value", "1")) {
 		log_message("could not set GPIO116 high for night mode");
 		return false;
 	}
-	sleep_seconds(1);
+	if (shutter_control)
+		sleep_seconds(1);
 	if (!g_running ||
 	    !write_value(std::string(kLedDirectory) + "/brightness",
 	                 std::to_string(led_brightness))) {
-		write_value(std::string(kGpioDirectory) + "/value", "0");
+		if (shutter_control)
+			write_value(std::string(kGpioDirectory) + "/value", "0");
 		log_message("could not turn on the IR LED");
 		return false;
 	}
 	mode = Mode::Night;
-	log_message("night mode: shutter high, IR LED brightness " +
-	             std::to_string(led_brightness) + "/" + std::to_string(led_max));
+	log_message(std::string("night mode: ") +
+		     (shutter_control ? "shutter high, " : "shutter unchanged, ") +
+		     "IR LED brightness " + std::to_string(led_brightness) + "/" +
+		     std::to_string(led_max));
 	return true;
 }
 
-void cleanup() {
+void cleanup(bool shutter_control) {
 	write_value(std::string(kLedDirectory) + "/brightness", "0");
-	write_value(std::string(kGpioDirectory) + "/value", "0");
-	log_message("stopped: shutter low and IR LED off");
+	if (shutter_control)
+		write_value(std::string(kGpioDirectory) + "/value", "0");
+	log_message(shutter_control ? "stopped: shutter low and IR LED off"
+				    : "stopped: IR LED off (shutter unchanged)");
 }
 
 bool parse_number(const char *text, double &value) {
@@ -253,10 +265,7 @@ int main(int argc, char **argv) {
 		print_usage(argv[0]);
 		return 2;
 	}
-	if (access(kImx415Service, X_OK) != 0) {
-		// The SC3336 build uses GPIO3_C4 as its reference-clock pin.
-		return 0;
-	}
+	const bool shutter_control = access(kImx415Service, X_OK) == 0;
 
 	std::ofstream(kLogFile, std::ios::out | std::ios::trunc).close();
 	struct sigaction action{};
@@ -269,7 +278,7 @@ int main(int argc, char **argv) {
 		log_message(std::string("missing JPEG analysis executable: ") + kJpegApp);
 		return 1;
 	}
-	if (!prepare_gpio())
+	if (shutter_control && !prepare_gpio())
 		return 1;
 
 	int led_max = 0;
@@ -281,9 +290,11 @@ int main(int argc, char **argv) {
 	const int led_night_brightness = led_max / 2;
 
 	Mode mode = Mode::Night;
-	if (!set_day_mode(mode, false))
+	if (!set_day_mode(mode, false, shutter_control))
 		return 1;
-	log_message("monitoring mean_y every " + std::to_string(options.interval_seconds) +
+	log_message(std::string(shutter_control ? "shutter control enabled; "
+					     : "shutter control disabled; LED-only mode; ") +
+		     "monitoring mean_y every " + std::to_string(options.interval_seconds) +
 	             "s; night below " + std::to_string(options.night_on_threshold) +
 	             ", day above " + std::to_string(options.day_on_threshold));
 
@@ -302,14 +313,15 @@ int main(int argc, char **argv) {
 				last_error.clear();
 			}
 			if (mode == Mode::Day && mean_luma < options.night_on_threshold) {
-				set_night_mode(mode, led_night_brightness, led_max);
+				set_night_mode(mode, led_night_brightness, led_max,
+					       shutter_control);
 			} else if (mode == Mode::Night && mean_luma > options.day_on_threshold) {
-				set_day_mode(mode, true);
+				set_day_mode(mode, true, shutter_control);
 			}
 		}
 		sleep_seconds(options.interval_seconds);
 	}
 
-	cleanup();
+	cleanup(shutter_control);
 	return 0;
 }

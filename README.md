@@ -54,6 +54,7 @@ remaining work is end-to-end validation on the Pico Mini.
 │       ├── etc/init.d/S99a-eye-cam
 │       └── usr/bin/
 │           ├── rkipc-supervisor.sh
+│           ├── night-vision.sh       # Optional shell controller for manual use
 │           └── test-pwm-led.sh
 └── sdk/                         # Local SDK and firmware tools; ignored by Git
     ├── Luckfox_Pico_Mini_Flash_250607/
@@ -160,6 +161,7 @@ The tracked project files copied into the SDK are:
 | `camera/imx415.c` | `sdk/luckfox-pico/sysdrv/source/kernel/drivers/media/i2c/imx415.c` |
 | `overlay/a-eye/etc/init.d/S99a-eye-night-vision` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-night-vision` (all builds) |
 | `overlay/a-eye/usr/bin/test-pwm-led.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/test-pwm-led.sh` (all builds) |
+| `overlay/a-eye/usr/bin/night-vision.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/night-vision.sh` (all builds; optional manual controller) |
 | `overlay/a-eye/etc/init.d/S99a-eye-cam` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/etc/init.d/S99a-eye-cam` (IMX415 only) |
 | `overlay/a-eye/usr/bin/rkipc-supervisor.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/rkipc-supervisor.sh` (IMX415 only) |
 | `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` (IMX415 only) |
@@ -176,8 +178,10 @@ not replaced by a tracked project file. The script clears existing
 overlay before installing the files for the selected camera. Both builds get
 `S99a-eye-night-vision` and `test-pwm-led.sh`. The init service does not call
 the LED tester; it starts the compiled `/usr/bin/night-vision` app only for the
-IMX415 build, where GPIO3_C4 is the shutter line. It skips automation for SC3336,
-where that pin remains part of the camera reference-clock path. Only an IMX415
+IMX415 build, where GPIO3_C4 is the shutter line. IMX415 builds also include
+`night-vision.sh` as an optional manual alternative; do not run it alongside
+the C++ service. On SC3336 the service still switches the PWM LED, but leaves
+GPIO3_C4 untouched because it carries the camera reference clock. Only an IMX415
 build gets `S99a-eye-cam`, `rkipc-supervisor.sh`, the IMX415 INI, and its IQ JSON. An
 SC3336 build therefore leaves the SDK's stock camera configuration and IQ
 files in place without installing the IMX415 camera service or profile.
@@ -300,6 +304,8 @@ For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
 tracked project files to the device:
 
 - `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
+- `overlay/a-eye/usr/bin/night-vision.sh` to `/usr/bin/night-vision.sh` as an
+  optional manual alternative to the C++ service;
 - `night-vision` and `night-vision-jpeg` from the SDK app build to
   `/usr/bin/night-vision` and `/usr/bin/night-vision-jpeg`;
 - `overlay/a-eye/usr/bin/rkipc-supervisor.sh` to
@@ -314,7 +320,8 @@ tracked project files to the device:
 The script stops the LED and camera services, unloads the currently loaded
 IMX415 module if present, installs and loads the new module, then starts the
 camera and night-vision services. The camera service launches `rkipc` with the deployed INI and IQ
-directory. `deploy.sh` does not remove old init-service filenames from a
+directory. It also removes the retired `/usr/bin/night-vision.sh`. `deploy.sh`
+does not remove old init-service filenames from a
 running image; flash a newly built image to apply the service rename cleanly.
 Deployment requires a connected device with a root ADB shell and a module
 built for the device's currently running kernel.
@@ -559,14 +566,24 @@ The init script can also be controlled manually from the device shell:
 
 On an IMX415 build, `S99a-eye-night-vision` supervises `/usr/bin/night-vision`.
 The C++ controller asks `/usr/bin/night-vision-jpeg` for a sample every 10
-seconds and uses its `mean_y` value. The default thresholds turn night mode on
-below 80 and back off above 100 (0 is black, 255 is white); override them with
+seconds and uses its `mean_y` value. The defaults, calibrated from the supplied
+SC3336 samples, turn night mode on below 100 and back off above 110 (0 is black,
+255 is white); override them with
 `--night-on`, `--day-on`, and `--interval-sec`. Night mode sets GPIO116 high and
 the PWM LED to half of its reported maximum brightness. Day mode sets GPIO116
 low and turns the LED off. Invalid or missing JPEG samples do not cause a mode
 transition. The controller writes status and errors to `/tmp/night-vision.log`.
+The optional shell implementation uses the same thresholds and controls the
+same LED; on IMX415 it also controls the shutter. Stop the init service before
+running it manually so the two controllers do not compete:
+
+```sh
+/etc/init.d/S99a-eye-night-vision stop
+/usr/bin/night-vision.sh
+```
+
 `test-pwm-led.sh` remains installed for manual LED testing and is not called by
-the init service. On an SC3336 build, the service skips night mode to leave the
+the init service. On SC3336, night mode changes the LED only and leaves the
 camera's GPIO3_C4 reference-clock path alone.
 
 ## Optional: manually loading the module on the device
