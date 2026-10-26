@@ -27,7 +27,7 @@ constexpr double kDefaultNightOnThreshold = 80.0;
 constexpr double kDefaultDayOnThreshold = 85.0;
 constexpr double kDefaultDayP90Minimum = 120.0;
 constexpr double kDefaultDayP90Maximum = 135.0;
-constexpr unsigned int kDefaultIntervalSeconds = 5;
+constexpr unsigned int kDefaultIntervalSeconds = 2;
 constexpr unsigned int kDefaultSwitchSamplesRequired = 2;
 
 volatile sig_atomic_t g_running = 1;

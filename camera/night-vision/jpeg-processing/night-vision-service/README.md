@@ -1,13 +1,14 @@
 # Night-vision service
 
 `night-vision.cpp` is the long-running controller for the JPEG image processor
-in [`../image-processor/`](../image-processor/README.md). Every 3 seconds by
+in [`../image-processor/`](../image-processor/README.md). Every 2 seconds by
 default, it reads the processor's `mean_y` and `p90_y` JSON values and applies
 hysteresis.
-The init script reads thresholds and sample interval from
+The init script reads thresholds, sample interval, and required consecutive
+sample count from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below `mean_y` 70. It returns
+tracked source config currently enters night mode below `mean_y` 80. It returns
 to day only when `mean_y` is above 85 and `p90_y` is in the inclusive 120..135
 acceptance band. This separates the measured one-lamp p90 values (127-128)
 from IR-lit night values (143-149) and near-saturated reflections. These are
@@ -32,7 +33,10 @@ If RKIPC's socket is unavailable, LED and shutter control continue and the
 selected image-mode request is retried on later samples.
 
 The program accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
-and `--interval-sec`. When launched through the init script, it receives values from
+`--interval-sec`, and `--samples-required`. A transition requires two
+consecutive qualifying samples by default (`SWITCH_SAMPLES_REQUIRED=2` in the
+tracked config); a nonqualifying or invalid sample resets the corresponding
+count. When launched through the init script, it receives values from
 `/etc/default/a-eye-night-vision`; direct launches need the options on the
 command line. It logs status and
 errors to `/tmp/night-vision.log`,

@@ -255,13 +255,16 @@ vendor application patch. Do not implement both paths by default.
   luminance, using block/scanline processing where supported. For option B,
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
-  thresholds and interval to the controller. Current trial settings enter
-  night below mean luma 70 and return to day above 85 only when `p90_y` is in
-  120..135. Validate these values across more scenes and exposure conditions.
+  thresholds, interval, and consecutive-sample requirement to the controller.
+  Current settings enter night below mean luma 80 and return to day above 85
+  only when `p90_y` is in 120..135. The default sample interval is 2 seconds,
+  and `SWITCH_SAMPLES_REQUIRED=2` requires two consecutive qualifying samples
+  for a transition.
   Earlier supplied SC3336 samples were 114.648 in normal light and 93.153 in
   the dark condition.
 - Use separate thresholds for entering and leaving night mode, require
-  sustained conditions, and allow the image to settle after a mode change.
+  sustained conditions through the configurable consecutive-sample count, and
+  allow the image to settle after a mode change.
 - Record observed minimum and maximum brightness for diagnostics. Do not use
   lifetime extrema as the sole calibration for switching thresholds.
 - Evaluate auto-exposure compensation: mean brightness can stay similar as
@@ -276,13 +279,13 @@ vendor application patch. Do not implement both paths by default.
 
 **Status: Ongoing.**
 
-- Keep usable normal-mode video in dim indoor conditions without entering night
-  mode due to one low sample. The current device showed LED-off mean luma
-  77.9..78.7 after exposure settled (with an initial 67.8 sample), while a
-  fully dark LED-off baseline was 1.1..1.5. A first trial uses
-  `NIGHT_ON_THRESHOLD=70`; check whether startup/transient samples still trigger
-  night mode.
-- Retain `DAY_ON_THRESHOLD=85` and the `p90_y` acceptance band 120..135 for now.
+- Keep usable normal-mode video in dim indoor conditions without mode
+  oscillation. Two consecutive qualifying samples are now required, with a
+  default 2-second interval; the user reports the behavior looks better.
+  Continue checking that startup/transient samples do not cause unwanted
+  transitions.
+- Current thresholds are `NIGHT_ON_THRESHOLD=80`, `DAY_ON_THRESHOLD=85`, and
+  `p90_y` acceptance band 120..135.
   One-lamp samples were mean 87.4..88.0 / p90 127..128; settled IR-lit night
   samples were mean 86.9..87.4 / p90 143..144. Reflective-object samples had
   p90 248. Verify that these thresholds stop the observed cycling while still
@@ -292,7 +295,8 @@ vendor application patch. Do not implement both paths by default.
 
 - `S99a-eye-night-vision` supervises the compiled `/usr/bin/night-vision`
   controller on both camera builds. It reads `mean_y` from the JPEG app every
-  3 seconds using values from `/etc/default/a-eye-night-vision`, and uses half
+  2 seconds by default using values from `/etc/default/a-eye-night-vision`, and
+  uses half
   of the PWM LED's reported maximum brightness in
   night mode. On IMX415 it also drives the active-low GPIO3_C4 / GPIO116 low
   for night and high for day; on SC3336 it leaves that reference-clock pin
