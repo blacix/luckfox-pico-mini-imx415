@@ -1,5 +1,6 @@
 # Local Luckfox SDK, firmware tools, and build artifacts
 /sdk/
+/build/
 /camera/night-vision/build/
 /camera/night-vision/jpeg-processing/image-processor/build/
 /camera/night-vision/jpeg-processing/night-vision-service/build/
