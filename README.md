@@ -42,7 +42,7 @@ remaining work is end-to-end validation on the Pico Mini.
 │       │   │   └── tjpgd3/
 │       │   └── night-vision-service/
 │       │       ├── night-vision.cpp
-│       │       ├── rkipc_saturation.cpp/.h
+│       │       ├── rkipc_isp.cpp/.h
 │       │       └── Makefile
 │       └── rkipc-patch/
 ├── implementation-plan.md
@@ -590,9 +590,22 @@ for night and high for day; on SC3336, it leaves GPIO116 untouched because the
 pin carries the camera reference clock. Day mode turns the LED off. Invalid or
 missing JPEG samples do not cause a mode
 transition. The controller writes status and errors to `/tmp/night-vision.log`.
-When entering night mode it also sets ISP saturation to zero through RKIPC's
-local socket API, making the existing RTSP stream grayscale. It restores the
-previous saturation in day mode and when the controller stops.
+`RKIPC_NIGHT_MODE` selects the grayscale implementation at compile time. Its
+default value is `1`, which uses RKIPC's night-to-day API and the ISP's
+black-and-white effect. Set it to `0` to use the saturation-based fallback,
+which sets ISP saturation to zero and restores the previous value in day mode
+and when the controller stops:
+
+```sh
+RKIPC_NIGHT_MODE=0 ./build.sh imx415
+```
+
+For a standalone build, pass the same variable to `make`. The tracked IMX415
+RKIPC profile omits IR-cut GPIO settings, so the night-to-day API can select
+the image effect while the service continues to control the shutter on
+GPIO116 and the IR LED itself. The SDK API's return status is unreliable in
+this configuration; the service reports successful socket delivery, not
+verified IR-cut state.
 The optional shell implementation uses the same thresholds and controls the
 same LED; on IMX415 it also controls the shutter. Stop the init service before
 running it manually so the two controllers do not compete:

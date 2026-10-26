@@ -1,4 +1,4 @@
-#include "rkipc_saturation.h"
+#include "rkipc_isp.h"
 
 #include <cerrno>
 #include <cstring>
@@ -7,7 +7,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-namespace rkipc_saturation {
+namespace rkipc_isp {
 namespace {
 
 constexpr char kSocketPath[] = "/var/tmp/rkipc";
@@ -81,7 +81,8 @@ bool begin_call(int fd, const char *function, std::string &error) {
 	return true;
 }
 
-bool finish_call(int fd, int function_status, std::string &error) {
+bool finish_call(int fd, int function_status, std::string &error,
+		 bool ignore_function_status = false) {
 	int server_status = -1;
 	const bool received = receive_all(fd, &server_status, sizeof(server_status));
 	close(fd);
@@ -89,8 +90,8 @@ bool finish_call(int fd, int function_status, std::string &error) {
 		error = std::string("read RKIPC response: ") + std::strerror(errno);
 		return false;
 	}
-	if (function_status != 0 || server_status != 0) {
-		error = "RKIPC rejected saturation request";
+	if ((!ignore_function_status && function_status != 0) || server_status != 0) {
+		error = "RKIPC rejected request";
 		return false;
 	}
 	return true;
@@ -98,7 +99,7 @@ bool finish_call(int fd, int function_status, std::string &error) {
 
 } // namespace
 
-bool get(int camera_id, int &value, std::string &error) {
+bool get_saturation(int camera_id, int &value, std::string &error) {
 	const int fd = connect_to_rkipc(error);
 	if (fd < 0)
 		return false;
@@ -127,7 +128,7 @@ bool get(int camera_id, int &value, std::string &error) {
 	return true;
 }
 
-bool set(int camera_id, int value, std::string &error) {
+bool set_saturation(int camera_id, int value, std::string &error) {
 	if (value < 0 || value > 100) {
 		error = "saturation must be between 0 and 100";
 		return false;
@@ -154,4 +155,35 @@ bool set(int camera_id, int value, std::string &error) {
 	return finish_call(fd, function_status, error);
 }
 
-} // namespace rkipc_saturation
+bool set_night_to_day(int camera_id, bool night, std::string &error) {
+	const int fd = connect_to_rkipc(error);
+	if (fd < 0)
+		return false;
+	if (!begin_call(fd, "rk_isp_set_night_to_day", error)) {
+		close(fd);
+		return false;
+	}
+	const char *value = night ? "night" : "day";
+	const int value_size = static_cast<int>(std::strlen(value) + 1);
+	if (!send_all(fd, &camera_id, sizeof(camera_id)) ||
+	    !send_all(fd, &value_size, sizeof(value_size)) ||
+	    !send_all(fd, value, static_cast<size_t>(value_size))) {
+		error = std::string("send RKIPC night-to-day request: ") +
+			std::strerror(errno);
+		close(fd);
+		return false;
+	}
+	int function_status = -1;
+	if (!receive_all(fd, &function_status, sizeof(function_status))) {
+		error = std::string("read RKIPC night-to-day result: ") +
+			std::strerror(errno);
+		close(fd);
+		return false;
+	}
+	// The SDK's RV1106 rk_isp_set_night_to_day() returns an uninitialized
+	// status value. Treat a successful socket dispatch as delivery of the
+	// request; its status cannot confirm either the AIE or IR-cut state.
+	return finish_call(fd, function_status, error, true);
+}
+
+} // namespace rkipc_isp

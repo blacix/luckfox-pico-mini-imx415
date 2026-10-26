@@ -2,12 +2,20 @@ APP_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SHELL := /bin/bash
 export LC_ALL := C
 
-BUILD_DIR ?= $(APP_DIR)/build
+RKIPC_NIGHT_MODE ?= 1
+BUILD_DIR ?= $(APP_DIR)/build/$(RKIPC_NIGHT_MODE)
 OBJECT := $(BUILD_DIR)/night-vision.o
-RKIPC_SATURATION_OBJECT := $(BUILD_DIR)/rkipc_saturation.o
+RKIPC_ISP_OBJECT := $(BUILD_DIR)/rkipc_isp.o
 CXXFLAGS ?= -std=c++11 -O2 -Wall -Wextra
 
-.PHONY: all clean print-config
+ifeq ($(RKIPC_NIGHT_MODE),0)
+else ifeq ($(RKIPC_NIGHT_MODE),1)
+else
+$(error RKIPC_NIGHT_MODE must be 0 or 1)
+endif
+CXXFLAGS += -DRKIPC_NIGHT_MODE=$(RKIPC_NIGHT_MODE)
+
+.PHONY: all clean print-config FORCE
 
 ifneq ($(wildcard $(APP_DIR)/../Makefile.param),)
 # Staged under project/app: use the selected Rockchip cross compiler and
@@ -39,21 +47,23 @@ endif
 $(BUILD_DIR) $(dir $(TARGET)):
 	mkdir -p $@
 
-$(OBJECT): $(APP_DIR)/night-vision.cpp $(APP_DIR)/rkipc_saturation.h | $(BUILD_DIR)
+$(OBJECT): $(APP_DIR)/night-vision.cpp $(APP_DIR)/rkipc_isp.h | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(RKIPC_SATURATION_OBJECT): $(APP_DIR)/rkipc_saturation.cpp $(APP_DIR)/rkipc_saturation.h | $(BUILD_DIR)
+$(RKIPC_ISP_OBJECT): $(APP_DIR)/rkipc_isp.cpp $(APP_DIR)/rkipc_isp.h | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(TARGET): $(OBJECT) $(RKIPC_SATURATION_OBJECT) | $(dir $(TARGET))
-	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
+$(TARGET): $(OBJECT) $(RKIPC_ISP_OBJECT) FORCE | $(dir $(TARGET))
+	$(CXX) $(LDFLAGS) $(OBJECT) $(RKIPC_ISP_OBJECT) $(LDLIBS) -o $@
+
+FORCE:
 
 print-config:
-	@printf 'SDK_PACKAGE=%s\nCROSS_COMPILE=%s\nTARGET=%s\n' \
-		'$(SDK_PACKAGE)' '$(CROSS_COMPILE)' '$(TARGET)'
+	@printf 'SDK_PACKAGE=%s\nRKIPC_NIGHT_MODE=%s\nCROSS_COMPILE=%s\nTARGET=%s\n' \
+		'$(SDK_PACKAGE)' '$(RKIPC_NIGHT_MODE)' '$(CROSS_COMPILE)' '$(TARGET)'
 	@if [ "$(SDK_PACKAGE)" = no ]; then \
 		printf 'SDK_ROOT=%s\nTOOLCHAIN_DIR=%s\n' '$(SDK_ROOT)' '$(TOOLCHAIN_DIR)'; \
 	fi
 
 clean:
-	rm -f $(TARGET) $(OBJECT) $(RKIPC_SATURATION_OBJECT)
+	rm -f $(TARGET) $(OBJECT) $(RKIPC_ISP_OBJECT)

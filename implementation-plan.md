@@ -280,15 +280,18 @@ vendor application patch. Do not implement both paths by default.
   night mode. On IMX415 it also drives the active-low GPIO3_C4 / GPIO116 low
   for night and high for day; on SC3336 it leaves that reference-clock pin
   untouched. Verify shutter state and mode transitions on the device.
-- On night-mode entry the controller sets ISP saturation to zero through
-  RKIPC's local socket API and restores the saved value in day mode. Verify
-  this produces grayscale in the active RTSP stream on both SC3336 and IMX415.
+- The controller supports two compile-time grayscale backends selected by
+  `RKIPC_NIGHT_MODE`: `1` (default) uses RKIPC's `rk_isp_set_night_to_day()`
+  AIE black-and-white mode; `0` uses the RKIPC saturation setter and
+  saves/restores the original value. The tracked
+  IMX415 INI omits IR-cut GPIO settings so the controller retains direct control
+  of GPIO116 and the IR LED. Revisit the SDK API status handling if this backend
+  is selected for production.
 - Keep `test-pwm-led.sh` installed for manual checks; the init service does not
   run it. On SC3336 the night-vision controller changes the LED only and leaves
   PC4 untouched because it is used on that camera's reference-clock path.
-- Review the INI's stock IR-cut GPIOs 36 and 35 and `rkipc` startup behavior.
-  Prevent stock hardware control from conflicting with the custom shutter
-  and LED controller.
+- Validate that omitting stock IR-cut GPIO settings lets the RKIPC
+  night-to-day API select black-and-white without operating unrelated pins.
 - The root build script stages the JPEG image processor, C++ night-vision
   service, and init service into the image. Validate the integration with a
   full build and camera-connected run.

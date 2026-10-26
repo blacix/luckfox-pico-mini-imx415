@@ -69,7 +69,9 @@ if [[ ! -f "${CAMERA_DRIVER_SOURCE}" ]]; then
 fi
 
 if [[ ! -f "${NIGHT_VISION_SERVICE_SOURCE}/Makefile" ||
-      ! -f "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" ]]; then
+      ! -f "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" ||
+      ! -f "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_isp.cpp" ||
+      ! -f "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_isp.h" ]]; then
     echo "Missing night-vision service source or Makefile" >&2
     exit 1
 fi
@@ -178,14 +180,16 @@ cp -- \
 
 echo "Staging the night-vision service for the SDK application build"
 mkdir -p "${NIGHT_VISION_SERVICE_TARGET}"
+rm -f -- "${NIGHT_VISION_SERVICE_TARGET}/rkipc_saturation.cpp" \
+    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_saturation.h"
 cp -- "${NIGHT_VISION_SERVICE_SOURCE}/Makefile" \
     "${NIGHT_VISION_SERVICE_TARGET}/Makefile"
 cp -- "${NIGHT_VISION_SERVICE_SOURCE}/night-vision.cpp" \
     "${NIGHT_VISION_SERVICE_TARGET}/night-vision.cpp"
-cp -- "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_saturation.cpp" \
-    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_saturation.cpp"
-cp -- "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_saturation.h" \
-    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_saturation.h"
+cp -- "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_isp.cpp" \
+    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_isp.cpp"
+cp -- "${NIGHT_VISION_SERVICE_SOURCE}/rkipc_isp.h" \
+    "${NIGHT_VISION_SERVICE_TARGET}/rkipc_isp.h"
 
 cd "${SDK_DIR}"
 

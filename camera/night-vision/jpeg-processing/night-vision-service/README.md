@@ -12,12 +12,19 @@ GPIO116 low and day mode sets it high. On SC3336, GPIO116 is left untouched
 because it carries the camera reference clock. Both camera modes drive the PWM
 IR LED at half its reported maximum brightness at night and turn it off by day.
 
-On night-mode entry, it also uses RKIPC's local socket API to set ISP saturation
-to zero, making the existing RTSP stream grayscale. It reads and saves the
-current saturation first, restores it on day-mode entry and shutdown, and keeps
-the saved value in `/run` so it can recover if the controller restarts while
-night mode is active. If RKIPC's socket is unavailable, LED and shutter control
-continue and saturation changes are retried on later samples.
+The grayscale backend is selected at compile time with `RKIPC_NIGHT_MODE`:
+
+- `1` (default) calls `rk_isp_set_night_to_day("night"/"day")`, selecting the
+  RV1106 ISP's AIE black-and-white effect. The tracked IMX415 INI omits the
+  IR-cut GPIO settings, so the service remains responsible for GPIO116 and the
+  IR LED. This SDK function returns an unreliable status; the service checks
+  socket delivery but cannot confirm the API's internal result.
+- `0` sets ISP saturation to zero through RKIPC. It saves the existing
+  setting, restores it in day mode and shutdown, and stores the saved value in
+  `/run` for recovery after a service restart.
+
+If RKIPC's socket is unavailable, LED and shutter control continue and the
+selected image-mode request is retried on later samples.
 
 The program accepts `--night-on`, `--day-on`, and `--interval-sec`. When
 launched through the init script, it receives values from
@@ -35,9 +42,19 @@ Build standalone with the SDK ARM/uClibc toolchain:
 make -C camera/night-vision/jpeg-processing/night-vision-service
 ```
 
-The executable is written to
-`camera/night-vision/jpeg-processing/night-vision-service/build/night-vision`.
+With the default `RKIPC_NIGHT_MODE=1`, the executable is written to
+`camera/night-vision/jpeg-processing/night-vision-service/build/1/night-vision`.
+Select the saturation fallback at compile time with:
+
+```sh
+make -C camera/night-vision/jpeg-processing/night-vision-service \
+	RKIPC_NIGHT_MODE=0
+```
+
+Its executable is written under `build/0/`.
 The repository-root `./build.sh` stages it as an SDK app package and includes
-it and its `rkipc_saturation.cpp` helper in the firmware image.
+it and the `rkipc_isp.cpp` helper in the firmware image. Use
+`RKIPC_NIGHT_MODE=0 ./build.sh imx415` to build a full image with the saturation
+fallback.
 `S99a-eye-night-vision` starts and supervises the installed executable on both
 camera builds. On SC3336 it uses LED-only mode and does not touch GPIO116.

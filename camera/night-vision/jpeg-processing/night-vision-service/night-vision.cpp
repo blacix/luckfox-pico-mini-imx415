@@ -5,7 +5,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
-#include "rkipc_saturation.h"
+#include "rkipc_isp.h"
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -20,7 +20,9 @@ constexpr char kGpioExport[] = "/sys/class/gpio/export";
 constexpr char kGpioDirectory[] = "/sys/class/gpio/gpio116";
 constexpr unsigned int kShutterGpio = 116;
 constexpr char kLogFile[] = "/tmp/night-vision.log";
+#if !RKIPC_NIGHT_MODE
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
+#endif
 constexpr double kDefaultNightOnThreshold = 80.0;
 constexpr double kDefaultDayOnThreshold = 95.0;
 constexpr unsigned int kDefaultIntervalSeconds = 3;
@@ -35,12 +37,20 @@ struct Options {
 
 enum class Mode { Day, Night };
 
-struct SaturationState {
+#if RKIPC_NIGHT_MODE
+struct GrayscaleState {
+	bool mode_known = false;
+	bool night_mode = false;
+	std::string last_error;
+};
+#else
+struct GrayscaleState {
 	bool original_known = false;
 	int original_value = 0;
 	bool grayscale_applied = false;
 	std::string last_error;
 };
+#endif
 
 void handle_signal(int) { g_running = 0; }
 
@@ -217,7 +227,27 @@ bool set_night_mode(Mode &mode, int led_brightness, int led_max,
 	return true;
 }
 
-bool load_saturation_state(SaturationState &state) {
+#if RKIPC_NIGHT_MODE
+void apply_grayscale_mode(bool night, GrayscaleState &state) {
+	if (state.mode_known && state.night_mode == night)
+		return;
+	std::string error;
+	if (!rkipc_isp::set_night_to_day(0, night, error)) {
+		state.mode_known = false;
+		if (error != state.last_error) {
+			log_message("could not request RKIPC night-to-day mode: " + error);
+			state.last_error = error;
+		}
+		return;
+	}
+	state.mode_known = true;
+	state.night_mode = night;
+	state.last_error.clear();
+	log_message(night ? "requested RKIPC night mode (AIE black-and-white)"
+			  : "requested RKIPC day mode (AIE effect off)");
+}
+#else
+bool load_saturation_state(GrayscaleState &state) {
 	int value = 0;
 	if (!read_integer(kSaturationStateFile, value))
 		return false;
@@ -231,19 +261,19 @@ bool load_saturation_state(SaturationState &state) {
 	return true;
 }
 
-void log_saturation_error(SaturationState &state, const std::string &error) {
+void log_saturation_error(GrayscaleState &state, const std::string &error) {
 	if (error != state.last_error) {
 		log_message("could not update RKIPC saturation: " + error);
 		state.last_error = error;
 	}
 }
 
-void apply_saturation_mode(bool night, SaturationState &state) {
+void apply_grayscale_mode(bool night, GrayscaleState &state) {
 	std::string error;
 	if (night) {
 		if (!state.original_known) {
 			int current = 0;
-			if (!rkipc_saturation::get(0, current, error)) {
+			if (!rkipc_isp::get_saturation(0, current, error)) {
 				log_saturation_error(state, error);
 				return;
 			}
@@ -257,7 +287,7 @@ void apply_saturation_mode(bool night, SaturationState &state) {
 		}
 		if (state.grayscale_applied)
 			return;
-		if (!rkipc_saturation::set(0, 0, error)) {
+		if (!rkipc_isp::set_saturation(0, 0, error)) {
 			log_saturation_error(state, error);
 			return;
 		}
@@ -270,7 +300,7 @@ void apply_saturation_mode(bool night, SaturationState &state) {
 
 	if (!state.original_known)
 		return;
-	if (!rkipc_saturation::set(0, state.original_value, error)) {
+	if (!rkipc_isp::set_saturation(0, state.original_value, error)) {
 		log_saturation_error(state, error);
 		return;
 	}
@@ -281,9 +311,10 @@ void apply_saturation_mode(bool night, SaturationState &state) {
 	log_message("day image restored to saturation " +
 		    std::to_string(state.original_value));
 }
+#endif
 
-void cleanup(bool shutter_control, SaturationState &saturation_state) {
-	apply_saturation_mode(false, saturation_state);
+void cleanup(bool shutter_control, GrayscaleState &grayscale_state) {
+	apply_grayscale_mode(false, grayscale_state);
 	write_value(std::string(kLedDirectory) + "/brightness", "0");
 	if (shutter_control)
 		write_value(std::string(kGpioDirectory) + "/value", "1");
@@ -363,8 +394,10 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	const int led_night_brightness = led_max / 2;
-	SaturationState saturation_state;
-	load_saturation_state(saturation_state);
+	GrayscaleState grayscale_state;
+#if !RKIPC_NIGHT_MODE
+	load_saturation_state(grayscale_state);
+#endif
 
 	Mode mode = Mode::Night;
 	if (!set_day_mode(mode, false, shutter_control))
@@ -380,7 +413,11 @@ int main(int argc, char **argv) {
 		double mean_luma = 0.0;
 		std::string error;
 		if (!capture_mean_luma(mean_luma, error)) {
-			saturation_state.grayscale_applied = false;
+#if RKIPC_NIGHT_MODE
+			grayscale_state.mode_known = false;
+#else
+			grayscale_state.grayscale_applied = false;
+#endif
 			if (g_running && error != last_error) {
 				log_message("no valid JPEG brightness sample: " + error);
 				last_error = error;
@@ -397,10 +434,10 @@ int main(int argc, char **argv) {
 				set_day_mode(mode, true, shutter_control);
 			}
 		}
-		apply_saturation_mode(mode == Mode::Night, saturation_state);
+		apply_grayscale_mode(mode == Mode::Night, grayscale_state);
 		sleep_seconds(options.interval_seconds);
 	}
 
-	cleanup(shutter_control, saturation_state);
+	cleanup(shutter_control, grayscale_state);
 	return 0;
 }
