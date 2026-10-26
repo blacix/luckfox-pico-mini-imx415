@@ -582,10 +582,8 @@ average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
 exposure and image processing. The current settings enter night mode below mean
-luma 80 and return to day mode above mean luma 85 only when `p90_y` is in the
-inclusive 120..135 range. This band separates the measured one-lamp readings
-(p90 127-128) from IR-lit night readings (p90 143-149) and near-saturated
-reflections. The tracked config requires two consecutive qualifying samples
+luma 70 and return to day mode above mean luma 90 only when `p90_y` is in the
+inclusive 105..180 range. The tracked config requires two consecutive qualifying samples
 (`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
 the count. The C++ program also
 accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,

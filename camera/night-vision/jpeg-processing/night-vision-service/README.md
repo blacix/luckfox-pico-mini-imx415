@@ -8,11 +8,11 @@ The init script reads thresholds, sample interval, and required consecutive
 sample count from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below `mean_y` 80. It returns
-to day only when `mean_y` is above 85 and `p90_y` is in the inclusive 120..135
-acceptance band. This separates the measured one-lamp p90 values (127-128)
-from IR-lit night values (143-149) and near-saturated reflections. These are
-initial tuning values to validate on the device. On IMX415, the
+tracked source config currently enters night mode below `mean_y` 70. It returns
+to day only when `mean_y` is above 90 and `p90_y` is in the inclusive 105..180
+acceptance band. These are trial settings to validate across lighting and
+exposure conditions. Near-saturated reflective-object samples measured at p90
+248 remain outside the band. On IMX415, the
 shutter input is active-low: night mode sets
 GPIO116 low and day mode sets it high. On SC3336, GPIO116 is left untouched
 because it carries the camera reference clock. Both camera modes drive the PWM

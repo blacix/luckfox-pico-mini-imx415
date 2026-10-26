@@ -256,8 +256,8 @@ vendor application patch. Do not implement both paths by default.
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
   thresholds, interval, and consecutive-sample requirement to the controller.
-  Current settings enter night below mean luma 80 and return to day above 85
-  only when `p90_y` is in 120..135. The default sample interval is 2 seconds,
+  Current settings enter night below mean luma 70 and return to day above 90
+  only when `p90_y` is in 105..180. The default sample interval is 2 seconds,
   and `SWITCH_SAMPLES_REQUIRED=2` requires two consecutive qualifying samples
   for a transition.
   Earlier supplied SC3336 samples were 114.648 in normal light and 93.153 in
@@ -284,8 +284,9 @@ vendor application patch. Do not implement both paths by default.
   default 2-second interval; the user reports the behavior looks better.
   Continue checking that startup/transient samples do not cause unwanted
   transitions.
-- Current thresholds are `NIGHT_ON_THRESHOLD=80`, `DAY_ON_THRESHOLD=85`, and
-  `p90_y` acceptance band 120..135.
+- Current defaults are `NIGHT_ON_THRESHOLD=70`, `DAY_ON_THRESHOLD=90`, and
+  `p90_y` acceptance band 105..180. Continue validating the combined thresholds
+  and two-sample rule across lighting and exposure conditions.
   One-lamp samples were mean 87.4..88.0 / p90 127..128; settled IR-lit night
   samples were mean 86.9..87.4 / p90 143..144. Reflective-object samples had
   p90 248. Verify that these thresholds stop the observed cycling while still
