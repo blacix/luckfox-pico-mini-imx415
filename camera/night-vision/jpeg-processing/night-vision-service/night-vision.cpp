@@ -23,7 +23,7 @@ constexpr char kLogFile[] = "/tmp/night-vision.log";
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
 constexpr double kDefaultNightOnThreshold = 90.0;
 constexpr double kDefaultDayOnThreshold = 100.0;
-constexpr unsigned int kDefaultIntervalSeconds = 5;
+constexpr unsigned int kDefaultIntervalSeconds = 3;
 
 volatile sig_atomic_t g_running = 1;
 
@@ -179,14 +179,14 @@ bool set_day_mode(Mode &mode, bool log_transition, bool shutter_control) {
 	if (shutter_control)
 		sleep_seconds(1);
 	if (shutter_control &&
-	    !write_value(std::string(kGpioDirectory) + "/value", "0")) {
-		log_message("could not set GPIO116 low for day mode");
+	    !write_value(std::string(kGpioDirectory) + "/value", "1")) {
+		log_message("could not set GPIO116 high for day mode");
 		return false;
 	}
 	const bool changed = mode != Mode::Day;
 	mode = Mode::Day;
 	if (log_transition && changed) {
-		log_message(shutter_control ? "day mode: shutter low, IR LED off"
+		log_message(shutter_control ? "day mode: shutter high, IR LED off"
 					    : "day mode: IR LED off (shutter unchanged)");
 	}
 	return true;
@@ -195,8 +195,8 @@ bool set_day_mode(Mode &mode, bool log_transition, bool shutter_control) {
 bool set_night_mode(Mode &mode, int led_brightness, int led_max,
 		    bool shutter_control) {
 	if (shutter_control &&
-	    !write_value(std::string(kGpioDirectory) + "/value", "1")) {
-		log_message("could not set GPIO116 high for night mode");
+	    !write_value(std::string(kGpioDirectory) + "/value", "0")) {
+		log_message("could not set GPIO116 low for night mode");
 		return false;
 	}
 	if (shutter_control)
@@ -205,13 +205,13 @@ bool set_night_mode(Mode &mode, int led_brightness, int led_max,
 	    !write_value(std::string(kLedDirectory) + "/brightness",
 	                 std::to_string(led_brightness))) {
 		if (shutter_control)
-			write_value(std::string(kGpioDirectory) + "/value", "0");
+			write_value(std::string(kGpioDirectory) + "/value", "1");
 		log_message("could not turn on the IR LED");
 		return false;
 	}
 	mode = Mode::Night;
 	log_message(std::string("night mode: ") +
-		     (shutter_control ? "shutter high, " : "shutter unchanged, ") +
+		     (shutter_control ? "shutter low, " : "shutter unchanged, ") +
 		     "IR LED brightness " + std::to_string(led_brightness) + "/" +
 		     std::to_string(led_max));
 	return true;
@@ -286,8 +286,8 @@ void cleanup(bool shutter_control, SaturationState &saturation_state) {
 	apply_saturation_mode(false, saturation_state);
 	write_value(std::string(kLedDirectory) + "/brightness", "0");
 	if (shutter_control)
-		write_value(std::string(kGpioDirectory) + "/value", "0");
-	log_message(shutter_control ? "stopped: shutter low and IR LED off"
+		write_value(std::string(kGpioDirectory) + "/value", "1");
+	log_message(shutter_control ? "stopped: shutter high and IR LED off"
 				    : "stopped: IR LED off (shutter unchanged)");
 }
 

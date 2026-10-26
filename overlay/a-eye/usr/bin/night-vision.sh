@@ -9,7 +9,7 @@ LOG_FILE=/tmp/night-vision.log
 CONFIG_FILE=/etc/default/a-eye-night-vision
 NIGHT_ON_THRESHOLD=90
 DAY_ON_THRESHOLD=100
-INTERVAL_SECONDS=5
+INTERVAL_SECONDS=3
 
 if [ -r "$CONFIG_FILE" ]; then
 	. "$CONFIG_FILE"
@@ -26,8 +26,8 @@ write_value() {
 cleanup() {
 	[ ! -w "$LED_DIR/brightness" ] || write_value "$LED_DIR/brightness" 0
 	if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-		[ ! -w "$GPIO_DIR/value" ] || write_value "$GPIO_DIR/value" 0
-		log 'stopped: shutter low and IR LED off'
+		[ ! -w "$GPIO_DIR/value" ] || write_value "$GPIO_DIR/value" 1
+		log 'stopped: shutter high and IR LED off'
 	else
 		log 'stopped: IR LED off; shutter unchanged'
 	fi
@@ -82,7 +82,7 @@ LED_NIGHT_BRIGHTNESS=$((LED_MAX / 2))
 write_value "$LED_DIR/brightness" 0
 if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 	sleep 1
-	write_value "$GPIO_DIR/value" 0
+	write_value "$GPIO_DIR/value" 1
 	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD}; shutter control enabled"
 else
 	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD}; LED-only mode (SC3336)"
@@ -114,13 +114,13 @@ while :; do
 		fi
 		if [ "$mode" = day ] && awk -v mean="$MEAN_Y" -v threshold="$NIGHT_ON_THRESHOLD" 'BEGIN { exit !(mean < threshold) }'; then
 			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				write_value "$GPIO_DIR/value" 1
+				write_value "$GPIO_DIR/value" 0
 				sleep 1
 			fi
 			write_value "$LED_DIR/brightness" "$LED_NIGHT_BRIGHTNESS"
 			mode=night
 			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				log "night mode: shutter high, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
+				log "night mode: shutter low, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
 			else
 				log "night mode: shutter unchanged, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
 			fi
@@ -128,11 +128,11 @@ while :; do
 			write_value "$LED_DIR/brightness" 0
 			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 				sleep 1
-				write_value "$GPIO_DIR/value" 0
+				write_value "$GPIO_DIR/value" 1
 			fi
 			mode=day
 			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				log 'day mode: shutter low, IR LED off'
+				log 'day mode: shutter high, IR LED off'
 			else
 				log 'day mode: shutter unchanged, IR LED off'
 			fi

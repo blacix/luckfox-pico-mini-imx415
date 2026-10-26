@@ -288,8 +288,9 @@
 		 *
 		 * GPIO3_C4 means GPIO bank 3, port C, pin 4 (RK_PC4 in the pinctrl
 		 * binding). It is muxed as a plain GPIO for the module's night-mode
-		 * shutter switch (Linux global GPIO 116 on this SoC). The driver
-		 * does not own or toggle it; userspace controls the shutter.
+		 * shutter switch (Linux global GPIO 116 on this SoC). The shutter input
+		 * is active-low: userspace drives low for night and high for day. The
+		 * driver does not own or toggle this GPIO.
 		 */
 		pinctrl-0 = <&gpio3_c4>;
 		rockchip,camera-module-index = <0>;
@@ -503,7 +504,8 @@
 			 * its GPIO mux with no pull. It used to carry the SC-camera MIPI
 			 * reference clock; IMX415 has its own oscillator, so PC4 can serve
 			 * as the night-mode shutter line. The sensor driver does not request
-			 * it; userspace can export GPIO 116 and set its output state.
+			 * it; userspace can export GPIO 116 and set its output state. The
+			 * shutter input is active-low (low for night, high for day).
 			 */
 			rockchip,pins = <3 RK_PC4 RK_FUNC_GPIO &pcfg_pull_none>;
 		};

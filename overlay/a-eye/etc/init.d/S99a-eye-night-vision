@@ -9,7 +9,7 @@ SHUTTER_VALUE=/sys/class/gpio/gpio116/value
 STOP_TIMEOUT=12
 NIGHT_ON_THRESHOLD=90
 DAY_ON_THRESHOLD=100
-INTERVAL_SECONDS=5
+INTERVAL_SECONDS=3
 
 if [ -r "$CONFIG_FILE" ]; then
 	. "$CONFIG_FILE"
@@ -69,7 +69,7 @@ stop() {
 	# SC3336 reference clock, so only reset GPIO116 on IMX415 builds.
 	[ ! -w "$LED_BRIGHTNESS" ] || printf '0\n' > "$LED_BRIGHTNESS"
 	if [ -x "$IMX415_INIT" ]; then
-		[ ! -w "$SHUTTER_VALUE" ] || printf '0\n' > "$SHUTTER_VALUE"
+		[ ! -w "$SHUTTER_VALUE" ] || printf '1\n' > "$SHUTTER_VALUE"
 	fi
 }
 

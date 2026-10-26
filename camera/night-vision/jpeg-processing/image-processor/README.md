@@ -50,7 +50,7 @@ its INI:
 ```sh
 adb push camera/night-vision/jpeg-processing/image-processor/build/night-vision-jpeg /tmp/night-vision-jpeg
 adb shell /tmp/night-vision-jpeg
-adb shell /tmp/night-vision-jpeg --interval-sec 5
+adb shell /tmp/night-vision-jpeg --interval-sec 3
 ```
 
 The snapshot directory must be mounted and writable by RKIPC. Override it with

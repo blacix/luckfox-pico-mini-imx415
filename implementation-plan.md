@@ -275,11 +275,11 @@ vendor application patch. Do not implement both paths by default.
 
 - `S99a-eye-night-vision` supervises the compiled `/usr/bin/night-vision`
   controller on both camera builds. It reads `mean_y` from the JPEG app every
-  5 seconds using values from `/etc/default/a-eye-night-vision`, and uses half
+  3 seconds using values from `/etc/default/a-eye-night-vision`, and uses half
   of the PWM LED's reported maximum brightness in
-  night mode. On IMX415 it also drives GPIO3_C4 / GPIO116 high for night and
-  low for day; on SC3336 it leaves that reference-clock pin untouched.
-  Verify shutter polarity, thresholds, and transitions on the device.
+  night mode. On IMX415 it also drives the active-low GPIO3_C4 / GPIO116 low
+  for night and high for day; on SC3336 it leaves that reference-clock pin
+  untouched. Verify shutter state and mode transitions on the device.
 - On night-mode entry the controller sets ISP saturation to zero through
   RKIPC's local socket API and restores the saved value in day mode. Verify
   this produces grayscale in the active RTSP stream on both SC3336 and IMX415.

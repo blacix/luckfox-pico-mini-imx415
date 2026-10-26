@@ -42,8 +42,9 @@
  *   continue to describe it and use the normal clock setup path.
  * - GPIO3_C4 means GPIO bank 3, port C, pin 4 (the DTS pin constant is
  *   RK_PC4). The board DT configures it for the module's night-mode shutter.
- *   This sensor driver does not request or drive that GPIO; it remains
- *   available to userspace.
+ *   The module's shutter input is active-low: userspace drives it low for
+ *   night mode and high for day mode. This sensor driver does not request or
+ *   drive that GPIO; it remains available to userspace.
  */
 
 #define DEBUG

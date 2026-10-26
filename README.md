@@ -572,7 +572,7 @@ The init script can also be controlled manually from the device shell:
 
 On both camera builds, `S99a-eye-night-vision` supervises
 `/usr/bin/night-vision`. The C++ controller asks
-`/usr/bin/night-vision-jpeg` for a sample every 5 seconds and uses its `mean_y`
+`/usr/bin/night-vision-jpeg` for a sample every 3 seconds and uses its `mean_y`
 value. The init script reads `/etc/default/a-eye-night-vision` and passes its
 settings as command-line options; the C++ executable does not read that file
 itself. Edit the tracked `overlay/a-eye/etc/default/a-eye-night-vision` before
@@ -585,8 +585,8 @@ exposure and image processing. The current settings enter night mode below 90
 and return to day mode above 100 (0 is black, 255 is white). The C++ program
 also accepts `--night-on`, `--day-on`, and `--interval-sec` overrides. Night
 mode sets the PWM LED to
-half of its reported maximum brightness. On IMX415, it also sets GPIO116 high
-for night and low for day; on SC3336, it leaves GPIO116 untouched because the
+half of its reported maximum brightness. On IMX415, it also sets GPIO116 low
+for night and high for day; on SC3336, it leaves GPIO116 untouched because the
 pin carries the camera reference clock. Day mode turns the LED off. Invalid or
 missing JPEG samples do not cause a mode
 transition. The controller writes status and errors to `/tmp/night-vision.log`.
@@ -720,18 +720,18 @@ offset 20):
 ```sh
 echo 116 > /sys/class/gpio/export
 echo out > /sys/class/gpio/gpio116/direction
-echo 1 > /sys/class/gpio/gpio116/value
+echo 0 > /sys/class/gpio/gpio116/value  # Night: active-low shutter
 ```
 
-Set it low to test the other state, then release the GPIO when finished:
+Set it high to test the day state, then release the GPIO when finished:
 
 ```sh
-echo 0 > /sys/class/gpio/gpio116/value
+echo 1 > /sys/class/gpio/gpio116/value  # Day: shutter inactive
 echo 116 > /sys/class/gpio/unexport
 ```
 
-The high and low states control the shutter; which state opens it depends on
-the camera wiring.
+The shutter input is active-low: GPIO116 low selects night mode and high
+selects day mode.
 
 The root-level build script is the required build entry point:
 
