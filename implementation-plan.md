@@ -256,7 +256,7 @@ vendor application patch. Do not implement both paths by default.
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
   thresholds and interval to the controller; the tracked settings currently enter
-  night mode below mean luma 90 and return to day mode above 100. Validate
+  night mode below mean luma 80 and return to day mode above 95. Validate
   these values across more scenes and exposure conditions. The earlier supplied
   SC3336 samples were 114.648 in normal light and 93.153 in the dark condition.
 - Use separate thresholds for entering and leaving night mode, require

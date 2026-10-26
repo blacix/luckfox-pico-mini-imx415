@@ -7,8 +7,8 @@ GPIO_EXPORT=/sys/class/gpio/export
 GPIO_DIR=/sys/class/gpio/gpio116
 LOG_FILE=/tmp/night-vision.log
 CONFIG_FILE=/etc/default/a-eye-night-vision
-NIGHT_ON_THRESHOLD=90
-DAY_ON_THRESHOLD=100
+NIGHT_ON_THRESHOLD=80
+DAY_ON_THRESHOLD=95
 INTERVAL_SECONDS=3
 
 if [ -r "$CONFIG_FILE" ]; then

@@ -6,8 +6,8 @@ default, it reads the processor's `mean_y` JSON value and applies hysteresis.
 The init script reads thresholds and sample interval from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below 90 and returns to day
-mode above 100. On IMX415, the shutter input is active-low: night mode sets
+tracked source config currently enters night mode below 80 and returns to day
+mode above 95. On IMX415, the shutter input is active-low: night mode sets
 GPIO116 low and day mode sets it high. On SC3336, GPIO116 is left untouched
 because it carries the camera reference clock. Both camera modes drive the PWM
 IR LED at half its reported maximum brightness at night and turn it off by day.

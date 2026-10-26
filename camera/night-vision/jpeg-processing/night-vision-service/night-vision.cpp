@@ -21,8 +21,8 @@ constexpr char kGpioDirectory[] = "/sys/class/gpio/gpio116";
 constexpr unsigned int kShutterGpio = 116;
 constexpr char kLogFile[] = "/tmp/night-vision.log";
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
-constexpr double kDefaultNightOnThreshold = 90.0;
-constexpr double kDefaultDayOnThreshold = 100.0;
+constexpr double kDefaultNightOnThreshold = 80.0;
+constexpr double kDefaultDayOnThreshold = 95.0;
 constexpr unsigned int kDefaultIntervalSeconds = 3;
 
 volatile sig_atomic_t g_running = 1;

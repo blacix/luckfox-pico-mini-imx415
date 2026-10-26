@@ -1,5 +1,5 @@
 # Night-vision controller settings. The values apply to both the C++ service
 # and the optional shell controller.
-NIGHT_ON_THRESHOLD=90
-DAY_ON_THRESHOLD=100
+NIGHT_ON_THRESHOLD=80
+DAY_ON_THRESHOLD=95
 INTERVAL_SECONDS=3
