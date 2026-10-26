@@ -572,19 +572,24 @@ The init script can also be controlled manually from the device shell:
 
 On both camera builds, `S99a-eye-night-vision` supervises
 `/usr/bin/night-vision`. The C++ controller asks
-`/usr/bin/night-vision-jpeg` for a sample every 3 seconds and uses its `mean_y`
-value. The init script reads `/etc/default/a-eye-night-vision` and passes its
-settings as command-line options; the C++ executable does not read that file
-itself. Edit the tracked `overlay/a-eye/etc/default/a-eye-night-vision` before
-building, or edit the installed file on the device and restart the service.
+`/usr/bin/night-vision-jpeg` for a sample every 2 seconds by default and uses
+its `mean_y` value. The init script reads `/etc/default/a-eye-night-vision` and
+passes its settings as command-line options; the C++ executable does not read
+that file itself. Edit the tracked `overlay/a-eye/etc/default/a-eye-night-vision`
+before building, or edit the installed file on the device and restart the service.
 `mean_y` is the
 average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
-exposure and image processing. The current settings enter night mode below 80
-and return to day mode above 95 (0 is black, 255 is white). The C++ program
-also accepts `--night-on`, `--day-on`, and `--interval-sec` overrides. Night
-mode sets the PWM LED to
+exposure and image processing. The current settings enter night mode below mean
+luma 70 and return to day mode above mean luma 90 only when `p90_y` is in the
+inclusive 105..180 range. The tracked config requires two consecutive qualifying samples
+(`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
+the count. The C++ program also
+accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
+`--interval-sec`, and `--samples-required` overrides. A mode transition
+requires two consecutive qualifying samples by default; an invalid or
+nonqualifying sample resets the relevant count. Night mode sets the PWM LED to
 half of its reported maximum brightness. On IMX415, it also sets GPIO116 low
 for night and high for day; on SC3336, it leaves GPIO116 untouched because the
 pin carries the camera reference clock. Day mode turns the LED off. Invalid or
