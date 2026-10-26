@@ -77,15 +77,17 @@ The register-level description and mode table are in the README section
 
 ## Automatic night mode — ongoing
 
-**Status: Ongoing.** Compare the snapshot and `rkipc` patch options below before
-choosing the measurement source. Implementation and camera-connected
-validation remain to be done.
+**Status: Ongoing; reliable day/night detection is an open issue.** The JPEG
+measurement application and shutter/IR LED controller are implemented and have
+been exercised on the device. The current switching rules still oscillate
+under IR illumination. Decide how to measure ambient light reliably before
+further threshold tuning.
 
-Create a small C++ application for the Pico Mini that obtains brightness
-measurements and controls the night-mode shutter and infrared LEDs. Keep the
-existing `rkipc` camera ownership and RTSP stream. The measurement source can
-be JPEG snapshots requested through the existing API, or statistics exposed by
-a small `rkipc` patch. OpenCV is not required for either approach.
+Keep the existing `rkipc` camera ownership and continuous RTSP stream on the
+Pico Mini. The current application uses JPEG snapshots through the existing
+API. The current requirement is to leave `rkipc` source unchanged; the patch
+design below is an alternative reference, not selected work. Keep resource
+costs suitable for the limited device; OpenCV is not required.
 
 ### 1. Compare measurement and decoding options
 
@@ -116,6 +118,9 @@ ARM/uClibc toolchain:
   size, peak RAM, and processing time while RTSP is active.
 
 #### Option B: Patch `rkipc` to expose measurements
+
+**Not selected:** changing `rkipc` source is outside the current approach.
+The following design is retained as an alternative reference.
 
 Keep the mode decisions and GPIO/PWM control in the separate C++ application.
 Add a small measurement API to `rkipc`, accessed through its local socket, so
@@ -275,22 +280,98 @@ vendor application patch. Do not implement both paths by default.
   return is detected while IR illumination is active, for example through
   controlled IR-off measurements, to prevent repeated day/night switching.
 
-#### Tune thresholds for borderline indoor/night lighting
+#### Open issue: reliable ambient-light detection with the IR LED on
 
-**Status: Ongoing.**
+**Status: Ongoing; unresolved.** The current implementation cannot make
+reliable ambient-light measurements while the IR LED is on. Its JPEG metrics
+measure the combined effect of ambient light and reflected IR, after camera
+exposure and ISP processing. They describe image brightness, not ambient
+illumination independently of the LED.
 
-- Keep usable normal-mode video in dim indoor conditions without mode
-  oscillation. Two consecutive qualifying samples are now required, with a
-  default 2-second interval; the user reports the behavior looks better.
-  Continue checking that startup/transient samples do not cause unwanted
-  transitions.
-- Current defaults are `NIGHT_ON_THRESHOLD=70`, `DAY_ON_THRESHOLD=90`, and
-  `p90_y` acceptance band 105..180. Continue validating the combined thresholds
-  and two-sample rule across lighting and exposure conditions.
-  One-lamp samples were mean 87.4..88.0 / p90 127..128; settled IR-lit night
-  samples were mean 86.9..87.4 / p90 143..144. Reflective-object samples had
-  p90 248. Verify that these thresholds stop the observed cycling while still
-  switching to night in genuinely dark conditions.
+The controller currently enters night mode when `mean_y < 70` and returns to
+day when `mean_y > 90` and `p90_y` is in the inclusive range 105..180. Two
+consecutive qualifying samples are required, with a 2-second delay between
+checks. The night samples are captured with the IR LED on. In a dark room,
+the LED can raise both metrics into the day acceptance region; switching to
+day then removes that illumination and triggers night again. Requiring more
+samples delays this feedback loop without removing its cause. Close
+reflective objects make scene-dependent IR illumination another source of
+unwanted switching.
+
+Controlled captures are recorded in
+[the measurement log](camera/night-vision/jpeg-processing/measurements.md).
+With GPIO116 held low in the night position, five samples per condition gave:
+
+| Room lighting | IR LED | Average `mean_y` | `p90_y` |
+| --- | --- | ---: | ---: |
+| One ceiling lamp | On, 127/255 | 102.441 | 121 |
+| Lamp off, PC monitor glow | On, 127/255 | 99.253 | 113 |
+| One ceiling lamp | Off | 95.961 | 129..130 |
+| Lamp off, PC monitor glow | Off | 26.838 | 45..52 |
+
+Both LED-on conditions pass the current return-to-day rule. The small gap
+between them does not establish a reliable threshold choice across scenes
+and exposure changes. With the LED off, the measured conditions separate
+clearly under the existing rules.
+
+Measurement limitation: stopping the controller requests RKIPC's day/color
+effect, and these captures then changed only GPIO116 and the LED. They
+characterize the hardware states but do not fully reproduce the running
+controller's night ISP state. Future comparisons must record the ISP mode
+and allow exposure to settle as well as recording room light, GPIO, and LED
+settings.
+
+Options and constraints still to resolve:
+
+- **LED-off decision capture:** keeping the shutter in its current position
+  and turning the LED off during capture avoids measuring its own IR light.
+  However, the RTSP stream uses the same camera, so this produces dark frames
+  or a visible interruption. The shortest reliable capture/settling period
+  has not been established. This is not an accepted solution for continuous
+  night illumination.
+- **Independent ambient light sensor with IR rejection:** a candidate for a
+  reliable measurement without interrupting video and with little processing
+  cost, but it requires hardware support. No sensor has been selected or
+  integrated.
+- **Rockchip Smart IR:** the SDK's RV1106-named ISP package includes
+  `libsmartIr`, its API header, and `sample_smartIr.cpp`. The sample uses the
+  ISP owner's context and statistics, with environmental-light thresholds,
+  IR color-ratio calibration, and switching counts. Existing RKIPC socket
+  APIs do not expose this detector. Our `rk_isp_set_night_to_day()` call
+  applies a requested mode; it does not perform automatic detection. Using
+  Smart IR while RKIPC owns the ISP would require an integration exposing its
+  decisions or required context/statistics. It cannot currently be used as a
+  drop-in detector in the separate application under the no-RKIPC-patch
+  requirement. A second application must not take over the camera while
+  RKIPC is using it.
+- **Additional JPEG statistics:** variance is not being pursued. Brightness
+  spread depends on scene content and does not identify visible light
+  independently of reflected IR. Omitting red is also not an established
+  solution: IR can affect multiple channels, and the active grayscale effect
+  removes color distinctions from the processed image.
+
+Keep the current implementation available. Select a measurement approach
+that meets the continuous-video and resource constraints before changing the
+decision algorithm, its default backend, or its thresholds. Validate it with
+normal lighting, darkness, nearby reflective objects, and light changes while
+already in night mode.
+
+#### Open issues from the JPEG processing review
+
+- The source review found the configured RGB byte order, integer luma
+  calculation, mean, and percentile calculations consistent. Processing is
+  performed on the reduced image: 1280x720 becomes 160x90. Percentiles and
+  extrema describe those reduced samples, and the controller consumes only
+  mean and p90. These facts do not establish reliable ambient-light detection.
+- **Snapshot ownership and completion:** the application selects the newest
+  changed file from the shared snapshot directory. Concurrent manual/service
+  captures can interfere, and unchanged size/timestamp observations are a
+  completion heuristic. Establish exclusive capture ownership and avoid
+  reading or deleting another request's snapshot without modifying RKIPC.
+- **Failure cleanup:** a JPEG that fails decoding is left behind because
+  deletion occurs only after successful processing. Define bounded cleanup
+  for application-owned failed captures so repeated errors cannot accumulate
+  files. Preserve the explicit `--keep-snapshots` diagnostic behavior.
 
 ### 4. Integrate shutter and infrared LED control — implemented, validate
 
