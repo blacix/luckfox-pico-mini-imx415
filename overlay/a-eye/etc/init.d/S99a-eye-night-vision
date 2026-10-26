@@ -8,7 +8,9 @@ LED_BRIGHTNESS=/sys/class/leds/pwm0_led/brightness
 SHUTTER_VALUE=/sys/class/gpio/gpio116/value
 STOP_TIMEOUT=12
 NIGHT_ON_THRESHOLD=80
-DAY_ON_THRESHOLD=95
+DAY_ON_THRESHOLD=85
+DAY_P90_MIN=120
+DAY_P90_MAX=135
 INTERVAL_SECONDS=3
 
 if [ -r "$CONFIG_FILE" ]; then
@@ -35,6 +37,8 @@ start() {
 	if ! start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$NIGHT_VISION" -- \
 		--night-on "$NIGHT_ON_THRESHOLD" \
 		--day-on "$DAY_ON_THRESHOLD" \
+		--day-p90-min "$DAY_P90_MIN" \
+		--day-p90-max "$DAY_P90_MAX" \
 		--interval-sec "$INTERVAL_SECONDS"; then
 		rm -f "$PIDFILE"
 		echo "Could not start night vision" >&2

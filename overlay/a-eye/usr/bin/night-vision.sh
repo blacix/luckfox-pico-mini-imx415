@@ -8,7 +8,9 @@ GPIO_DIR=/sys/class/gpio/gpio116
 LOG_FILE=/tmp/night-vision.log
 CONFIG_FILE=/etc/default/a-eye-night-vision
 NIGHT_ON_THRESHOLD=80
-DAY_ON_THRESHOLD=95
+DAY_ON_THRESHOLD=85
+DAY_P90_MIN=120
+DAY_P90_MAX=135
 INTERVAL_SECONDS=3
 
 if [ -r "$CONFIG_FILE" ]; then
@@ -77,15 +79,20 @@ if [ "$LED_MAX" -le 0 ]; then
 	log 'PWM LED maximum brightness must be positive'
 	exit 1
 fi
+if ! awk -v minimum="$DAY_P90_MIN" -v maximum="$DAY_P90_MAX" \
+	'BEGIN { exit !(minimum >= 0 && maximum <= 255 && minimum < maximum) }'; then
+	log 'DAY_P90_MIN and DAY_P90_MAX must define an increasing range within 0..255'
+	exit 1
+fi
 LED_NIGHT_BRIGHTNESS=$((LED_MAX / 2))
 
 write_value "$LED_DIR/brightness" 0
 if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 	sleep 1
 	write_value "$GPIO_DIR/value" 1
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD}; shutter control enabled"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; shutter control enabled"
 else
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD}; LED-only mode (SC3336)"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; LED-only mode (SC3336)"
 fi
 mode=day
 last_error=
@@ -93,8 +100,10 @@ last_error=
 while :; do
 	if SAMPLE_OUTPUT=$("$JPEG_APP" 2>&1); then
 		MEAN_Y=$(printf '%s\n' "$SAMPLE_OUTPUT" | sed -n 's/.*"mean_y":[[:space:]]*\([0-9][0-9.]*\).*/\1/p' | sed -n '1p')
-		if ! awk -v value="$MEAN_Y" 'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value >= 0 && value <= 255) }'; then
-			ERROR='invalid mean_y output from JPEG image processor'
+		P90_Y=$(printf '%s\n' "$SAMPLE_OUTPUT" | sed -n 's/.*"p90_y":[[:space:]]*\([0-9][0-9.]*\).*/\1/p' | sed -n '1p')
+		if ! awk -v mean="$MEAN_Y" -v p90="$P90_Y" \
+			'BEGIN { exit !(mean ~ /^[0-9]+([.][0-9]+)?$/ && mean >= 0 && mean <= 255 && p90 ~ /^[0-9]+([.][0-9]+)?$/ && p90 >= 0 && p90 <= 255) }'; then
+			ERROR='invalid mean_y or p90_y output from JPEG image processor'
 		else
 			ERROR=
 		fi
@@ -124,7 +133,13 @@ while :; do
 			else
 				log "night mode: shutter unchanged, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
 			fi
-		elif [ "$mode" = night ] && awk -v mean="$MEAN_Y" -v threshold="$DAY_ON_THRESHOLD" 'BEGIN { exit !(mean > threshold) }'; then
+		elif [ "$mode" = night ] && awk \
+			-v mean="$MEAN_Y" \
+			-v threshold="$DAY_ON_THRESHOLD" \
+			-v p90="$P90_Y" \
+			-v p90_min="$DAY_P90_MIN" \
+			-v p90_max="$DAY_P90_MAX" \
+			'BEGIN { exit !(mean > threshold && p90 >= p90_min && p90 <= p90_max) }'; then
 			write_value "$LED_DIR/brightness" 0
 			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 				sleep 1

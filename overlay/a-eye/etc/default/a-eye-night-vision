@@ -1,5 +1,8 @@
-# Night-vision controller settings. The values apply to both the C++ service
-# and the optional shell controller.
+# Night-vision controller settings. Both controllers use these values.
 NIGHT_ON_THRESHOLD=80
-DAY_ON_THRESHOLD=95
+DAY_ON_THRESHOLD=85
+# Day mode also requires p90_y to fall in this inclusive acceptance band.
+# Measured one-lamp p90_y was 127-128; IR-lit night was 143-149.
+DAY_P90_MIN=120
+DAY_P90_MAX=135
 INTERVAL_SECONDS=3

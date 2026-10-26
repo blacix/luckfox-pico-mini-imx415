@@ -581,9 +581,13 @@ building, or edit the installed file on the device and restart the service.
 average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
-exposure and image processing. The current settings enter night mode below 80
-and return to day mode above 95 (0 is black, 255 is white). The C++ program
-also accepts `--night-on`, `--day-on`, and `--interval-sec` overrides. Night
+exposure and image processing. The current settings enter night mode below mean
+luma 80 and return to day mode above mean luma 85 only when `p90_y` is in the
+inclusive 120..135 range. This band separates the measured one-lamp readings
+(p90 127-128) from IR-lit night readings (p90 143-149) and near-saturated
+reflections; these are initial values to validate on the device. The C++ program also
+accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`, and
+`--interval-sec` overrides. Night
 mode sets the PWM LED to
 half of its reported maximum brightness. On IMX415, it also sets GPIO116 low
 for night and high for day; on SC3336, it leaves GPIO116 untouched because the

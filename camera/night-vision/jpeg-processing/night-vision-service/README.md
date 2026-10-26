@@ -2,12 +2,17 @@
 
 `night-vision.cpp` is the long-running controller for the JPEG image processor
 in [`../image-processor/`](../image-processor/README.md). Every 3 seconds by
-default, it reads the processor's `mean_y` JSON value and applies hysteresis.
+default, it reads the processor's `mean_y` and `p90_y` JSON values and applies
+hysteresis.
 The init script reads thresholds and sample interval from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below 80 and returns to day
-mode above 95. On IMX415, the shutter input is active-low: night mode sets
+tracked source config currently enters night mode below `mean_y` 80. It returns
+to day only when `mean_y` is above 85 and `p90_y` is in the inclusive 120..135
+acceptance band. This separates the measured one-lamp p90 values (127-128)
+from IR-lit night values (143-149) and near-saturated reflections. These are
+initial tuning values to validate on the device. On IMX415, the
+shutter input is active-low: night mode sets
 GPIO116 low and day mode sets it high. On SC3336, GPIO116 is left untouched
 because it carries the camera reference clock. Both camera modes drive the PWM
 IR LED at half its reported maximum brightness at night and turn it off by day.
@@ -26,8 +31,8 @@ The grayscale backend is selected at compile time with `RKIPC_NIGHT_MODE`:
 If RKIPC's socket is unavailable, LED and shutter control continue and the
 selected image-mode request is retried on later samples.
 
-The program accepts `--night-on`, `--day-on`, and `--interval-sec`. When
-launched through the init script, it receives values from
+The program accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
+and `--interval-sec`. When launched through the init script, it receives values from
 `/etc/default/a-eye-night-vision`; direct launches need the options on the
 command line. It logs status and
 errors to `/tmp/night-vision.log`,

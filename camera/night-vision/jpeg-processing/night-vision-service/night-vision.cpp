@@ -24,7 +24,9 @@ constexpr char kLogFile[] = "/tmp/night-vision.log";
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
 #endif
 constexpr double kDefaultNightOnThreshold = 80.0;
-constexpr double kDefaultDayOnThreshold = 95.0;
+constexpr double kDefaultDayOnThreshold = 85.0;
+constexpr double kDefaultDayP90Minimum = 120.0;
+constexpr double kDefaultDayP90Maximum = 135.0;
 constexpr unsigned int kDefaultIntervalSeconds = 3;
 
 volatile sig_atomic_t g_running = 1;
@@ -32,7 +34,14 @@ volatile sig_atomic_t g_running = 1;
 struct Options {
 	double night_on_threshold = kDefaultNightOnThreshold;
 	double day_on_threshold = kDefaultDayOnThreshold;
+	double day_p90_minimum = kDefaultDayP90Minimum;
+	double day_p90_maximum = kDefaultDayP90Maximum;
 	unsigned int interval_seconds = kDefaultIntervalSeconds;
+};
+
+struct BrightnessSample {
+	double mean_y = 0.0;
+	double p90_y = 0.0;
 };
 
 enum class Mode { Day, Night };
@@ -100,8 +109,8 @@ bool prepare_gpio() {
 	return true;
 }
 
-bool parse_luma(const std::string &text, double &luma) {
-	const std::string key = "\"mean_y\":";
+bool parse_json_number(const std::string &text, const std::string &key,
+	               double &value) {
 	const std::string::size_type key_pos = text.find(key);
 	if (key_pos == std::string::npos)
 		return false;
@@ -109,14 +118,20 @@ bool parse_luma(const std::string &text, double &luma) {
 	const char *start = text.c_str() + key_pos + key.size();
 	char *end = nullptr;
 	errno = 0;
-	const double value = std::strtod(start, &end);
-	if (errno || end == start || value < 0.0 || value > 255.0)
+	const double parsed = std::strtod(start, &end);
+	if (errno || end == start || parsed < 0.0 || parsed > 255.0)
 		return false;
-	luma = value;
+	value = parsed;
 	return true;
 }
 
-bool capture_mean_luma(double &luma, std::string &error) {
+bool parse_brightness_sample(const std::string &text,
+	                     BrightnessSample &sample) {
+	return parse_json_number(text, "\"mean_y\":", sample.mean_y) &&
+	       parse_json_number(text, "\"p90_y\":", sample.p90_y);
+}
+
+bool capture_brightness_sample(BrightnessSample &sample, std::string &error) {
 	int descriptors[2];
 	if (pipe(descriptors) != 0) {
 		error = std::string("create JPEG app pipe: ") + std::strerror(errno);
@@ -174,8 +189,8 @@ bool capture_mean_luma(double &luma, std::string &error) {
 			error = "JPEG app exited unsuccessfully";
 		return false;
 	}
-	if (!parse_luma(output, luma)) {
-		error = "could not parse mean_y from JPEG app output";
+	if (!parse_brightness_sample(output, sample)) {
+		error = "could not parse mean_y and p90_y from JPEG app output";
 		return false;
 	}
 	return true;
@@ -332,7 +347,8 @@ bool parse_number(const char *text, double &value) {
 bool parse_options(int argc, char **argv, Options &options) {
 	for (int i = 1; i < argc; ++i) {
 		const std::string argument(argv[i]);
-		if (argument == "--night-on" || argument == "--day-on") {
+		if (argument == "--night-on" || argument == "--day-on" ||
+		    argument == "--day-p90-min" || argument == "--day-p90-max") {
 			if (i + 1 >= argc)
 				return false;
 			double value = 0.0;
@@ -340,8 +356,12 @@ bool parse_options(int argc, char **argv, Options &options) {
 				return false;
 			if (argument == "--night-on")
 				options.night_on_threshold = value;
-			else
+			else if (argument == "--day-on")
 				options.day_on_threshold = value;
+			else if (argument == "--day-p90-min")
+				options.day_p90_minimum = value;
+			else
+				options.day_p90_maximum = value;
 		} else if (argument == "--interval-sec") {
 			if (i + 1 >= argc)
 				return false;
@@ -355,12 +375,15 @@ bool parse_options(int argc, char **argv, Options &options) {
 			return false;
 		}
 	}
-	return options.night_on_threshold < options.day_on_threshold;
+	return options.night_on_threshold < options.day_on_threshold &&
+	       options.day_p90_minimum < options.day_p90_maximum;
 }
 
 void print_usage(const char *program) {
 	std::cerr << "Usage: " << program
-	          << " [--night-on LUMA] [--day-on LUMA] [--interval-sec N]\n";
+	          << " [--night-on LUMA] [--day-on LUMA]"
+	             " [--day-p90-min LUMA] [--day-p90-max LUMA]"
+	             " [--interval-sec N]\n";
 }
 
 } // namespace
@@ -406,13 +429,15 @@ int main(int argc, char **argv) {
 					     : "shutter control disabled; LED-only mode; ") +
 		     "monitoring mean_y every " + std::to_string(options.interval_seconds) +
 	             "s; night below " + std::to_string(options.night_on_threshold) +
-	             ", day above " + std::to_string(options.day_on_threshold));
+	             ", day above " + std::to_string(options.day_on_threshold) +
+	             " with p90_y in [" + std::to_string(options.day_p90_minimum) +
+	             ", " + std::to_string(options.day_p90_maximum) + "]");
 
 	std::string last_error;
 	while (g_running) {
-		double mean_luma = 0.0;
+		BrightnessSample sample;
 		std::string error;
-		if (!capture_mean_luma(mean_luma, error)) {
+		if (!capture_brightness_sample(sample, error)) {
 #if RKIPC_NIGHT_MODE
 			grayscale_state.mode_known = false;
 #else
@@ -427,10 +452,14 @@ int main(int argc, char **argv) {
 				log_message("JPEG brightness sampling recovered");
 				last_error.clear();
 			}
-			if (mode == Mode::Day && mean_luma < options.night_on_threshold) {
+			if (mode == Mode::Day &&
+			    sample.mean_y < options.night_on_threshold) {
 				set_night_mode(mode, led_night_brightness, led_max,
 					       shutter_control);
-			} else if (mode == Mode::Night && mean_luma > options.day_on_threshold) {
+			} else if (mode == Mode::Night &&
+			           sample.mean_y > options.day_on_threshold &&
+			           sample.p90_y >= options.day_p90_minimum &&
+			           sample.p90_y <= options.day_p90_maximum) {
 				set_day_mode(mode, true, shutter_control);
 			}
 		}
