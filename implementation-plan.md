@@ -255,10 +255,11 @@ vendor application patch. Do not implement both paths by default.
   luminance, using block/scanline processing where supported. For option B,
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
-  thresholds and interval to the controller; the tracked settings currently enter
-  night mode below mean luma 80 and return to day mode above 95. Validate
-  these values across more scenes and exposure conditions. The earlier supplied
-  SC3336 samples were 114.648 in normal light and 93.153 in the dark condition.
+  thresholds and interval to the controller. Current trial settings enter
+  night below mean luma 70 and return to day above 85 only when `p90_y` is in
+  120..135. Validate these values across more scenes and exposure conditions.
+  Earlier supplied SC3336 samples were 114.648 in normal light and 93.153 in
+  the dark condition.
 - Use separate thresholds for entering and leaving night mode, require
   sustained conditions, and allow the image to settle after a mode change.
 - Record observed minimum and maximum brightness for diagnostics. Do not use
@@ -270,6 +271,22 @@ vendor application patch. Do not implement both paths by default.
 - Account for the infrared LEDs brightening the image. Define how daylight
   return is detected while IR illumination is active, for example through
   controlled IR-off measurements, to prevent repeated day/night switching.
+
+#### Tune thresholds for borderline indoor/night lighting
+
+**Status: Ongoing.**
+
+- Keep usable normal-mode video in dim indoor conditions without entering night
+  mode due to one low sample. The current device showed LED-off mean luma
+  77.9..78.7 after exposure settled (with an initial 67.8 sample), while a
+  fully dark LED-off baseline was 1.1..1.5. A first trial uses
+  `NIGHT_ON_THRESHOLD=70`; check whether startup/transient samples still trigger
+  night mode.
+- Retain `DAY_ON_THRESHOLD=85` and the `p90_y` acceptance band 120..135 for now.
+  One-lamp samples were mean 87.4..88.0 / p90 127..128; settled IR-lit night
+  samples were mean 86.9..87.4 / p90 143..144. Reflective-object samples had
+  p90 248. Verify that these thresholds stop the observed cycling while still
+  switching to night in genuinely dark conditions.
 
 ### 4. Integrate shutter and infrared LED control — implemented, validate
 

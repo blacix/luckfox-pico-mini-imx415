@@ -7,7 +7,7 @@ hysteresis.
 The init script reads thresholds and sample interval from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below `mean_y` 80. It returns
+tracked source config currently enters night mode below `mean_y` 70. It returns
 to day only when `mean_y` is above 85 and `p90_y` is in the inclusive 120..135
 acceptance band. This separates the measured one-lamp p90 values (127-128)
 from IR-lit night values (143-149) and near-saturated reflections. These are

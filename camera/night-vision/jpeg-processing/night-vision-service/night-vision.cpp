@@ -27,7 +27,8 @@ constexpr double kDefaultNightOnThreshold = 80.0;
 constexpr double kDefaultDayOnThreshold = 85.0;
 constexpr double kDefaultDayP90Minimum = 120.0;
 constexpr double kDefaultDayP90Maximum = 135.0;
-constexpr unsigned int kDefaultIntervalSeconds = 3;
+constexpr unsigned int kDefaultIntervalSeconds = 5;
+constexpr unsigned int kDefaultSwitchSamplesRequired = 2;
 
 volatile sig_atomic_t g_running = 1;
 
@@ -37,6 +38,7 @@ struct Options {
 	double day_p90_minimum = kDefaultDayP90Minimum;
 	double day_p90_maximum = kDefaultDayP90Maximum;
 	unsigned int interval_seconds = kDefaultIntervalSeconds;
+	unsigned int switch_samples_required = kDefaultSwitchSamplesRequired;
 };
 
 struct BrightnessSample {
@@ -362,15 +364,20 @@ bool parse_options(int argc, char **argv, Options &options) {
 				options.day_p90_minimum = value;
 			else
 				options.day_p90_maximum = value;
-		} else if (argument == "--interval-sec") {
+		} else if (argument == "--interval-sec" ||
+		           argument == "--samples-required") {
 			if (i + 1 >= argc)
 				return false;
 			char *end = nullptr;
 			errno = 0;
 			const unsigned long value = std::strtoul(argv[++i], &end, 10);
-			if (errno || end == argv[i] || *end || value == 0 || value > 3600)
+			const unsigned long maximum = argument == "--interval-sec" ? 3600 : 100;
+			if (errno || end == argv[i] || *end || value == 0 || value > maximum)
 				return false;
-			options.interval_seconds = static_cast<unsigned int>(value);
+			if (argument == "--interval-sec")
+				options.interval_seconds = static_cast<unsigned int>(value);
+			else
+				options.switch_samples_required = static_cast<unsigned int>(value);
 		} else {
 			return false;
 		}
@@ -383,7 +390,7 @@ void print_usage(const char *program) {
 	std::cerr << "Usage: " << program
 	          << " [--night-on LUMA] [--day-on LUMA]"
 	             " [--day-p90-min LUMA] [--day-p90-max LUMA]"
-	             " [--interval-sec N]\n";
+	             " [--interval-sec N] [--samples-required N]\n";
 }
 
 } // namespace
@@ -431,13 +438,19 @@ int main(int argc, char **argv) {
 	             "s; night below " + std::to_string(options.night_on_threshold) +
 	             ", day above " + std::to_string(options.day_on_threshold) +
 	             " with p90_y in [" + std::to_string(options.day_p90_minimum) +
-	             ", " + std::to_string(options.day_p90_maximum) + "]");
+	             ", " + std::to_string(options.day_p90_maximum) +
+	             "]; switching requires " +
+	             std::to_string(options.switch_samples_required) + " consecutive samples");
 
 	std::string last_error;
+	unsigned int night_candidate_count = 0;
+	unsigned int day_candidate_count = 0;
 	while (g_running) {
 		BrightnessSample sample;
 		std::string error;
 		if (!capture_brightness_sample(sample, error)) {
+			night_candidate_count = 0;
+			day_candidate_count = 0;
 #if RKIPC_NIGHT_MODE
 			grayscale_state.mode_known = false;
 #else
@@ -452,15 +465,32 @@ int main(int argc, char **argv) {
 				log_message("JPEG brightness sampling recovered");
 				last_error.clear();
 			}
-			if (mode == Mode::Day &&
-			    sample.mean_y < options.night_on_threshold) {
-				set_night_mode(mode, led_night_brightness, led_max,
-					       shutter_control);
-			} else if (mode == Mode::Night &&
-			           sample.mean_y > options.day_on_threshold &&
-			           sample.p90_y >= options.day_p90_minimum &&
-			           sample.p90_y <= options.day_p90_maximum) {
-				set_day_mode(mode, true, shutter_control);
+			const bool night_candidate =
+			    sample.mean_y < options.night_on_threshold;
+			const bool day_candidate =
+			    sample.mean_y > options.day_on_threshold &&
+			    sample.p90_y >= options.day_p90_minimum &&
+			    sample.p90_y <= options.day_p90_maximum;
+
+			if (mode == Mode::Day) {
+				day_candidate_count = 0;
+				night_candidate_count = night_candidate
+				                            ? night_candidate_count + 1
+				                            : 0;
+				if (night_candidate_count >= options.switch_samples_required) {
+					set_night_mode(mode, led_night_brightness, led_max,
+						       shutter_control);
+					night_candidate_count = 0;
+				}
+			} else {
+				night_candidate_count = 0;
+				day_candidate_count = day_candidate
+				                          ? day_candidate_count + 1
+				                          : 0;
+				if (day_candidate_count >= options.switch_samples_required) {
+					set_day_mode(mode, true, shutter_control);
+					day_candidate_count = 0;
+				}
 			}
 		}
 		apply_grayscale_mode(mode == Mode::Night, grayscale_state);

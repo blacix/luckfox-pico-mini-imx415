@@ -11,7 +11,8 @@ NIGHT_ON_THRESHOLD=80
 DAY_ON_THRESHOLD=85
 DAY_P90_MIN=120
 DAY_P90_MAX=135
-INTERVAL_SECONDS=3
+INTERVAL_SECONDS=5
+SWITCH_SAMPLES_REQUIRED=2
 
 if [ -r "$CONFIG_FILE" ]; then
 	. "$CONFIG_FILE"
@@ -84,18 +85,28 @@ if ! awk -v minimum="$DAY_P90_MIN" -v maximum="$DAY_P90_MAX" \
 	log 'DAY_P90_MIN and DAY_P90_MAX must define an increasing range within 0..255'
 	exit 1
 fi
+case "$SWITCH_SAMPLES_REQUIRED" in
+	''|*[!0-9]*) log 'SWITCH_SAMPLES_REQUIRED must be an integer from 1 to 100'; exit 1 ;;
+esac
+if [ "$SWITCH_SAMPLES_REQUIRED" -lt 1 ] ||
+	[ "$SWITCH_SAMPLES_REQUIRED" -gt 100 ]; then
+	log 'SWITCH_SAMPLES_REQUIRED must be an integer from 1 to 100'
+	exit 1
+fi
 LED_NIGHT_BRIGHTNESS=$((LED_MAX / 2))
 
 write_value "$LED_DIR/brightness" 0
 if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 	sleep 1
 	write_value "$GPIO_DIR/value" 1
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; shutter control enabled"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; shutter control enabled"
 else
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; LED-only mode (SC3336)"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; LED-only mode (SC3336)"
 fi
 mode=day
 last_error=
+night_candidate_count=0
+day_candidate_count=0
 
 while :; do
 	if SAMPLE_OUTPUT=$("$JPEG_APP" 2>&1); then
@@ -112,6 +123,8 @@ while :; do
 	fi
 
 	if [ -n "$ERROR" ]; then
+		night_candidate_count=0
+		day_candidate_count=0
 		if [ "$ERROR" != "$last_error" ]; then
 			log "$ERROR"
 			last_error=$ERROR
@@ -121,35 +134,54 @@ while :; do
 			log 'JPEG brightness sampling recovered'
 			last_error=
 		fi
-		if [ "$mode" = day ] && awk -v mean="$MEAN_Y" -v threshold="$NIGHT_ON_THRESHOLD" 'BEGIN { exit !(mean < threshold) }'; then
-			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				write_value "$GPIO_DIR/value" 0
-				sleep 1
-			fi
-			write_value "$LED_DIR/brightness" "$LED_NIGHT_BRIGHTNESS"
-			mode=night
-			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				log "night mode: shutter low, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
+		if [ "$mode" = day ]; then
+			day_candidate_count=0
+			if awk -v mean="$MEAN_Y" -v threshold="$NIGHT_ON_THRESHOLD" \
+				'BEGIN { exit !(mean < threshold) }'; then
+				night_candidate_count=$((night_candidate_count + 1))
 			else
-				log "night mode: shutter unchanged, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
+				night_candidate_count=0
 			fi
-		elif [ "$mode" = night ] && awk \
-			-v mean="$MEAN_Y" \
-			-v threshold="$DAY_ON_THRESHOLD" \
-			-v p90="$P90_Y" \
-			-v p90_min="$DAY_P90_MIN" \
-			-v p90_max="$DAY_P90_MAX" \
-			'BEGIN { exit !(mean > threshold && p90 >= p90_min && p90 <= p90_max) }'; then
-			write_value "$LED_DIR/brightness" 0
-			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				sleep 1
-				write_value "$GPIO_DIR/value" 1
+			if [ "$night_candidate_count" -ge "$SWITCH_SAMPLES_REQUIRED" ]; then
+				if [ "$SHUTTER_CONTROL" -eq 1 ]; then
+					write_value "$GPIO_DIR/value" 0
+					sleep 1
+				fi
+				write_value "$LED_DIR/brightness" "$LED_NIGHT_BRIGHTNESS"
+				mode=night
+				night_candidate_count=0
+				if [ "$SHUTTER_CONTROL" -eq 1 ]; then
+					log "night mode: shutter low, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
+				else
+					log "night mode: shutter unchanged, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
+				fi
 			fi
-			mode=day
-			if [ "$SHUTTER_CONTROL" -eq 1 ]; then
-				log 'day mode: shutter high, IR LED off'
+		else
+			night_candidate_count=0
+			if awk \
+				-v mean="$MEAN_Y" \
+				-v threshold="$DAY_ON_THRESHOLD" \
+				-v p90="$P90_Y" \
+				-v p90_min="$DAY_P90_MIN" \
+				-v p90_max="$DAY_P90_MAX" \
+				'BEGIN { exit !(mean > threshold && p90 >= p90_min && p90 <= p90_max) }'; then
+				day_candidate_count=$((day_candidate_count + 1))
 			else
-				log 'day mode: shutter unchanged, IR LED off'
+				day_candidate_count=0
+			fi
+			if [ "$day_candidate_count" -ge "$SWITCH_SAMPLES_REQUIRED" ]; then
+				write_value "$LED_DIR/brightness" 0
+				if [ "$SHUTTER_CONTROL" -eq 1 ]; then
+					sleep 1
+					write_value "$GPIO_DIR/value" 1
+				fi
+				mode=day
+				day_candidate_count=0
+				if [ "$SHUTTER_CONTROL" -eq 1 ]; then
+					log 'day mode: shutter high, IR LED off'
+				else
+					log 'day mode: shutter unchanged, IR LED off'
+				fi
 			fi
 		fi
 	fi
