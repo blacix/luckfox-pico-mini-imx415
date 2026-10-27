@@ -261,8 +261,9 @@ vendor application patch. Do not implement both paths by default.
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
   thresholds, interval, and consecutive-sample requirement to the controller.
-  Current settings enter night below mean luma 70 and return to day above 90
-  only when `p90_y` is in 105..180. The default sample interval is 2 seconds,
+  Current settings enter night below mean luma 70 and return to day above 95
+  only when `p90_y` is in 110..180. The IR LED defaults to 10% brightness. The
+  sample interval is 2 seconds,
   and `SWITCH_SAMPLES_REQUIRED=2` requires two consecutive qualifying samples
   for a transition.
   Earlier supplied SC3336 samples were 114.648 in normal light and 93.153 in
@@ -288,15 +289,19 @@ measure the combined effect of ambient light and reflected IR, after camera
 exposure and ISP processing. They describe image brightness, not ambient
 illumination independently of the LED.
 
-The controller currently enters night mode when `mean_y < 70` and returns to
-day when `mean_y > 90` and `p90_y` is in the inclusive range 105..180. Two
-consecutive qualifying samples are required, with a 2-second delay between
-checks. The night samples are captured with the IR LED on. In a dark room,
-the LED can raise both metrics into the day acceptance region; switching to
-day then removes that illumination and triggers night again. Requiring more
-samples delays this feedback loop without removing its cause. Close
-reflective objects make scene-dependent IR illumination another source of
-unwanted switching.
+The controller enters night mode when `mean_y < 70` and returns to day when
+`mean_y > 95` and `p90_y` is in the inclusive range 110..180. It uses 10% IR
+LED brightness, requires two consecutive qualifying samples, and waits 2
+seconds between checks. Earlier 50% LED captures showed the dark IR-lit scene
+inside the day acceptance region. At 10%, the latest lights-off captures had
+day-position/LED-off `mean_y` 63.651–68.367 and night-position/LED-on
+`mean_y` 91.902–92.148 with `p90_y` 97–100. The latest lights-on night-state
+captures had `mean_y` 100.746–100.813 and `p90_y` 124–125. The updated rules
+separate the captured lights-off and lights-on night states: the dark samples
+do not qualify for day, while the lit samples do. This is evidence for the
+current defaults in these measured conditions, not a general guarantee;
+close reflective objects and other scenes can still change the captured
+brightness substantially.
 
 Controlled captures are recorded in
 [the measurement log](camera/night-vision/jpeg-processing/measurements.md).
@@ -309,10 +314,11 @@ With GPIO116 held low in the night position, five samples per condition gave:
 | One ceiling lamp | Off | 95.961 | 129..130 |
 | Lamp off, PC monitor glow | Off | 26.838 | 45..52 |
 
-Both LED-on conditions pass the current return-to-day rule. The small gap
-between them does not establish a reliable threshold choice across scenes
-and exposure changes. With the LED off, the measured conditions separate
-clearly under the existing rules.
+Both LED-on conditions pass the old return-to-day rule. Their brightness
+overlaps substantially, so the 50% captures did not establish a useful
+threshold. With the LED off, the measured conditions separated clearly. The
+new 10% captures above show a useful gap in the measured lights-off and
+lights-on night states under the updated return-to-day rule.
 
 Measurement limitation: stopping the controller requests RKIPC's day/color
 effect, and these captures then changed only GPIO116 and the LED. They
