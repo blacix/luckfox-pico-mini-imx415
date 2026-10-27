@@ -23,8 +23,8 @@ constexpr char kLogFile[] = "/tmp/night-vision.log";
 #if !RKIPC_NIGHT_MODE
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
 #endif
-constexpr double kDefaultNightOnThreshold = 70.0;
-constexpr double kDefaultDayOnThreshold = 95.0;
+constexpr double kDefaultNightOnThreshold = 65.0;
+constexpr double kDefaultDayOnThreshold = 85.0;
 constexpr double kDefaultDayP90Minimum = 110.0;
 constexpr double kDefaultDayP90Maximum = 180.0;
 constexpr unsigned int kDefaultIntervalSeconds = 2;

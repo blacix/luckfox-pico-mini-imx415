@@ -261,7 +261,7 @@ vendor application patch. Do not implement both paths by default.
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
   thresholds, interval, and consecutive-sample requirement to the controller.
-  Current settings enter night below mean luma 70 and return to day above 95
+  Current settings enter night below mean luma 65 and return to day above 85
   only when `p90_y` is in 110..180. The IR LED defaults to 10% brightness. The
   sample interval is 2 seconds,
   and `SWITCH_SAMPLES_REQUIRED=2` requires two consecutive qualifying samples
@@ -289,8 +289,8 @@ measure the combined effect of ambient light and reflected IR, after camera
 exposure and ISP processing. They describe image brightness, not ambient
 illumination independently of the LED.
 
-The controller enters night mode when `mean_y < 70` and returns to day when
-`mean_y > 95` and `p90_y` is in the inclusive range 110..180. It uses 10% IR
+The controller enters night mode when `mean_y < 65` and returns to day when
+`mean_y > 85` and `p90_y` is in the inclusive range 110..180. It uses 10% IR
 LED brightness, requires two consecutive qualifying samples, and waits 2
 seconds between checks. Earlier 50% LED captures showed the dark IR-lit scene
 inside the day acceptance region. At 10%, the latest lights-off captures had

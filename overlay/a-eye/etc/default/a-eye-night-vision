@@ -1,7 +1,7 @@
 # Night-vision controller settings. Both controllers use these values.
 # Keep usable borderline indoor images in day mode.
-NIGHT_ON_THRESHOLD=70
-DAY_ON_THRESHOLD=95
+NIGHT_ON_THRESHOLD=65
+DAY_ON_THRESHOLD=85
 # Day mode also requires p90_y to fall in this inclusive acceptance band.
 # At 10% IR LED, lights-off night p90_y was 97-100; lights-on night was 124-125.
 DAY_P90_MIN=110

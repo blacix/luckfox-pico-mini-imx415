@@ -585,7 +585,7 @@ average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
 exposure and image processing. The current settings enter night mode below mean
-luma 70 and return to day mode above mean luma 95 only when `p90_y` is in the
+luma 65 and return to day mode above mean luma 85 only when `p90_y` is in the
 inclusive 110..180 range. The tracked config requires two consecutive qualifying samples
 (`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
 the count. `LED_INTENSITY_PERCENT=10` sets the night-mode LED to 10% of the
