@@ -585,12 +585,16 @@ exposure and image processing. The current settings enter night mode below mean
 luma 70 and return to day mode above mean luma 90 only when `p90_y` is in the
 inclusive 105..180 range. The tracked config requires two consecutive qualifying samples
 (`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
-the count. The C++ program also
+the count. `LED_INTENSITY_PERCENT=50` sets the night-mode LED to 50% of the
+device's reported `max_brightness`, rounded to the nearest integer. Set it to
+an integer from 0 to 100; the actual brightness value depends on the hardware
+maximum (for example, 122 when the maximum is 244). The init script passes this setting to the C++ app;
+the optional shell controller reads it from the same config file. The C++ program also
 accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
-`--interval-sec`, and `--samples-required` overrides. A mode transition
-requires two consecutive qualifying samples by default; an invalid or
-nonqualifying sample resets the relevant count. Night mode sets the PWM LED to
-half of its reported maximum brightness. On IMX415, it also sets GPIO116 low
+`--interval-sec`, `--samples-required`, and `--led-intensity-percent` overrides.
+A mode transition requires two consecutive qualifying samples by default; an
+invalid or nonqualifying sample resets the relevant count. Night mode sets the
+PWM LED to the configured intensity. On IMX415, it also sets GPIO116 low
 for night and high for day; on SC3336, it leaves GPIO116 untouched because the
 pin carries the camera reference clock. Day mode turns the LED off. Invalid or
 missing JPEG samples do not cause a mode

@@ -13,6 +13,7 @@ DAY_P90_MIN=105
 DAY_P90_MAX=180
 INTERVAL_SECONDS=2
 SWITCH_SAMPLES_REQUIRED=2
+LED_INTENSITY_PERCENT=50
 
 if [ -r "$CONFIG_FILE" ]; then
 	. "$CONFIG_FILE"
@@ -93,15 +94,22 @@ if [ "$SWITCH_SAMPLES_REQUIRED" -lt 1 ] ||
 	log 'SWITCH_SAMPLES_REQUIRED must be an integer from 1 to 100'
 	exit 1
 fi
-LED_NIGHT_BRIGHTNESS=$((LED_MAX / 2))
+case "$LED_INTENSITY_PERCENT" in
+	''|*[!0-9]*) log 'LED_INTENSITY_PERCENT must be an integer from 0 to 100'; exit 1 ;;
+esac
+if [ "$LED_INTENSITY_PERCENT" -gt 100 ]; then
+	log 'LED_INTENSITY_PERCENT must be an integer from 0 to 100'
+	exit 1
+fi
+LED_NIGHT_BRIGHTNESS=$(((LED_MAX * LED_INTENSITY_PERCENT + 50) / 100))
 
 write_value "$LED_DIR/brightness" 0
 if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 	sleep 1
 	write_value "$GPIO_DIR/value" 1
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; shutter control enabled"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; LED intensity ${LED_INTENSITY_PERCENT}% (${LED_NIGHT_BRIGHTNESS}/${LED_MAX}); shutter control enabled"
 else
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; LED-only mode (SC3336)"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; LED intensity ${LED_INTENSITY_PERCENT}% (${LED_NIGHT_BRIGHTNESS}/${LED_MAX}); LED-only mode (SC3336)"
 fi
 mode=day
 last_error=

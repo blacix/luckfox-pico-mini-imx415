@@ -13,6 +13,7 @@ DAY_P90_MIN=105
 DAY_P90_MAX=180
 INTERVAL_SECONDS=2
 SWITCH_SAMPLES_REQUIRED=2
+LED_INTENSITY_PERCENT=50
 
 if [ -r "$CONFIG_FILE" ]; then
 	. "$CONFIG_FILE"
@@ -41,7 +42,8 @@ start() {
 		--day-p90-min "$DAY_P90_MIN" \
 		--day-p90-max "$DAY_P90_MAX" \
 		--interval-sec "$INTERVAL_SECONDS" \
-		--samples-required "$SWITCH_SAMPLES_REQUIRED"; then
+		--samples-required "$SWITCH_SAMPLES_REQUIRED" \
+		--led-intensity-percent "$LED_INTENSITY_PERCENT"; then
 		rm -f "$PIDFILE"
 		echo "Could not start night vision" >&2
 		return 1

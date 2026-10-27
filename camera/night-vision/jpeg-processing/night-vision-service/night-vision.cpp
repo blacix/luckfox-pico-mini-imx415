@@ -29,6 +29,7 @@ constexpr double kDefaultDayP90Minimum = 105.0;
 constexpr double kDefaultDayP90Maximum = 180.0;
 constexpr unsigned int kDefaultIntervalSeconds = 2;
 constexpr unsigned int kDefaultSwitchSamplesRequired = 2;
+constexpr unsigned int kDefaultLedIntensityPercent = 50;
 
 volatile sig_atomic_t g_running = 1;
 
@@ -39,6 +40,7 @@ struct Options {
 	double day_p90_maximum = kDefaultDayP90Maximum;
 	unsigned int interval_seconds = kDefaultIntervalSeconds;
 	unsigned int switch_samples_required = kDefaultSwitchSamplesRequired;
+	unsigned int led_intensity_percent = kDefaultLedIntensityPercent;
 };
 
 struct BrightnessSample {
@@ -365,19 +367,24 @@ bool parse_options(int argc, char **argv, Options &options) {
 			else
 				options.day_p90_maximum = value;
 		} else if (argument == "--interval-sec" ||
-		           argument == "--samples-required") {
+		           argument == "--samples-required" ||
+		           argument == "--led-intensity-percent") {
 			if (i + 1 >= argc)
 				return false;
 			char *end = nullptr;
 			errno = 0;
 			const unsigned long value = std::strtoul(argv[++i], &end, 10);
 			const unsigned long maximum = argument == "--interval-sec" ? 3600 : 100;
-			if (errno || end == argv[i] || *end || value == 0 || value > maximum)
+			const bool zero_not_allowed =
+			    value == 0 && argument != "--led-intensity-percent";
+			if (errno || end == argv[i] || *end || zero_not_allowed || value > maximum)
 				return false;
 			if (argument == "--interval-sec")
 				options.interval_seconds = static_cast<unsigned int>(value);
-			else
+			else if (argument == "--samples-required")
 				options.switch_samples_required = static_cast<unsigned int>(value);
+			else
+				options.led_intensity_percent = static_cast<unsigned int>(value);
 		} else {
 			return false;
 		}
@@ -390,7 +397,8 @@ void print_usage(const char *program) {
 	std::cerr << "Usage: " << program
 	          << " [--night-on LUMA] [--day-on LUMA]"
 	             " [--day-p90-min LUMA] [--day-p90-max LUMA]"
-	             " [--interval-sec N] [--samples-required N]\n";
+	             " [--interval-sec N] [--samples-required N]"
+	             " [--led-intensity-percent PERCENT]\n";
 }
 
 } // namespace
@@ -423,7 +431,8 @@ int main(int argc, char **argv) {
 		log_message("PWM LED interface is unavailable or has an invalid maximum");
 		return 1;
 	}
-	const int led_night_brightness = led_max / 2;
+	const int led_night_brightness =
+	    (led_max * static_cast<int>(options.led_intensity_percent) + 50) / 100;
 	GrayscaleState grayscale_state;
 #if !RKIPC_NIGHT_MODE
 	load_saturation_state(grayscale_state);
@@ -440,7 +449,10 @@ int main(int argc, char **argv) {
 	             " with p90_y in [" + std::to_string(options.day_p90_minimum) +
 	             ", " + std::to_string(options.day_p90_maximum) +
 	             "]; switching requires " +
-	             std::to_string(options.switch_samples_required) + " consecutive samples");
+	             std::to_string(options.switch_samples_required) +
+	             " consecutive samples; LED intensity " +
+	             std::to_string(options.led_intensity_percent) + "% (" +
+	             std::to_string(led_night_brightness) + "/" + std::to_string(led_max) + ")");
 
 	std::string last_error;
 	unsigned int night_candidate_count = 0;

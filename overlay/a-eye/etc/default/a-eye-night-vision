@@ -8,3 +8,5 @@ DAY_P90_MIN=105
 DAY_P90_MAX=180
 INTERVAL_SECONDS=2
 SWITCH_SAMPLES_REQUIRED=2
+# IR LED output as a percentage of the device's reported max_brightness.
+LED_INTENSITY_PERCENT=50
