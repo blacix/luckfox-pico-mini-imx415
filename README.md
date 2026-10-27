@@ -585,13 +585,13 @@ average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
 exposure and image processing. The current settings enter night mode below mean
-luma 70 and return to day mode above mean luma 90 only when `p90_y` is in the
-inclusive 105..180 range. The tracked config requires two consecutive qualifying samples
+luma 70 and return to day mode above mean luma 95 only when `p90_y` is in the
+inclusive 110..180 range. The tracked config requires two consecutive qualifying samples
 (`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
-the count. `LED_INTENSITY_PERCENT=50` sets the night-mode LED to 50% of the
+the count. `LED_INTENSITY_PERCENT=10` sets the night-mode LED to 10% of the
 device's reported `max_brightness`, rounded to the nearest integer. Set it to
 an integer from 0 to 100; the actual brightness value depends on the hardware
-maximum (for example, 122 when the maximum is 244). The init script passes this setting to the C++ app;
+maximum (26 at 10% when the maximum is 255). The init script passes this setting to the C++ app;
 the optional shell controller reads it from the same config file. The C++ program also
 accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
 `--interval-sec`, `--samples-required`, and `--led-intensity-percent` overrides.

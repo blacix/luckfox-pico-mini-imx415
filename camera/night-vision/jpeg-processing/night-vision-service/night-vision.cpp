@@ -24,12 +24,12 @@ constexpr char kLogFile[] = "/tmp/night-vision.log";
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
 #endif
 constexpr double kDefaultNightOnThreshold = 70.0;
-constexpr double kDefaultDayOnThreshold = 90.0;
-constexpr double kDefaultDayP90Minimum = 105.0;
+constexpr double kDefaultDayOnThreshold = 95.0;
+constexpr double kDefaultDayP90Minimum = 110.0;
 constexpr double kDefaultDayP90Maximum = 180.0;
 constexpr unsigned int kDefaultIntervalSeconds = 2;
 constexpr unsigned int kDefaultSwitchSamplesRequired = 2;
-constexpr unsigned int kDefaultLedIntensityPercent = 50;
+constexpr unsigned int kDefaultLedIntensityPercent = 10;
 
 volatile sig_atomic_t g_running = 1;
 
