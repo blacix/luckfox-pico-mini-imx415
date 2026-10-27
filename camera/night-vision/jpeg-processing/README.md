@@ -10,6 +10,6 @@ requesting a JPEG snapshot. It has two components:
   measured mean luma.
 
 The root `./build.sh` stages the two components as separate SDK app packages.
-The SDK installs them as `/usr/bin/night-vision-jpeg` and
+The SDK installs them as `/usr/bin/night-vision-measurement` and
 `/usr/bin/night-vision`. The `S99a-eye-night-vision` init script supervises the
 service executable on IMX415 builds.

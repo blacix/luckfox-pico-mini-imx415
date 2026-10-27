@@ -13,7 +13,7 @@
 
 namespace {
 
-constexpr char kJpegApp[] = "/usr/bin/night-vision-jpeg";
+constexpr char kMeasurementApp[] = "/usr/bin/night-vision-measurement";
 constexpr char kImx415Service[] = "/etc/init.d/S99a-eye-cam";
 constexpr char kLedDirectory[] = "/sys/class/leds/pwm0_led";
 constexpr char kGpioExport[] = "/sys/class/gpio/export";
@@ -154,7 +154,7 @@ bool capture_brightness_sample(BrightnessSample &sample, std::string &error) {
 		dup2(descriptors[1], STDOUT_FILENO);
 		dup2(descriptors[1], STDERR_FILENO);
 		close(descriptors[1]);
-		execl(kJpegApp, kJpegApp, static_cast<char *>(nullptr));
+		execl(kMeasurementApp, kMeasurementApp, static_cast<char *>(nullptr));
 		_exit(127);
 	}
 
@@ -418,8 +418,8 @@ int main(int argc, char **argv) {
 	sigaction(SIGINT, &action, nullptr);
 	sigaction(SIGTERM, &action, nullptr);
 
-	if (access(kJpegApp, X_OK) != 0) {
-		log_message(std::string("missing JPEG analysis executable: ") + kJpegApp);
+	if (access(kMeasurementApp, X_OK) != 0) {
+		log_message(std::string("missing image measurement executable: ") + kMeasurementApp);
 		return 1;
 	}
 	if (shutter_control && !prepare_gpio())

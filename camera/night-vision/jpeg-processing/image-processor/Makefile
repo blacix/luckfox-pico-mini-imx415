@@ -20,7 +20,7 @@ include $(APP_DIR)/../Makefile.param
 CROSS_COMPILE ?= $(RK_APP_CROSS)-
 COMMON_DIR := $(APP_DIR)/common
 PKG_BIN ?= $(APP_DIR)/out
-TARGET := $(PKG_BIN)/root/usr/bin/night-vision-jpeg
+TARGET := $(PKG_BIN)/root/usr/bin/night-vision-measurement
 SDK_PACKAGE := yes
 else
 # Standalone development build using the SDK compiler directly.
@@ -29,7 +29,7 @@ SDK_ROOT ?= $(REPO_ROOT)/sdk/luckfox-pico
 TOOLCHAIN_DIR ?= $(SDK_ROOT)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin
 CROSS_COMPILE ?= $(TOOLCHAIN_DIR)/arm-rockchip830-linux-uclibcgnueabihf-
 COMMON_DIR := $(APP_DIR)/../../common
-TARGET := $(BUILD_DIR)/night-vision-jpeg
+TARGET := $(BUILD_DIR)/night-vision-measurement
 SDK_PACKAGE := no
 endif
 
@@ -64,4 +64,4 @@ print-config:
 	fi
 
 clean:
-	rm -f $(TARGET) $(MAIN_OBJECT) $(TJPGD_OBJECT)
+	rm -f $(TARGET) $(BUILD_DIR)/night-vision-jpeg $(MAIN_OBJECT) $(TJPGD_OBJECT)

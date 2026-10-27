@@ -34,7 +34,7 @@ output_dir=$(dirname -- "$output_path")
 mkdir -p -- "$output_dir"
 
 echo "Requesting a JPEG through RKIPC..." >&2
-"$adb_bin" "${adb_args[@]}" shell /usr/bin/night-vision-jpeg --keep-snapshots
+"$adb_bin" "${adb_args[@]}" shell /usr/bin/night-vision-measurement --keep-snapshots
 
 remote_path=$("$adb_bin" "${adb_args[@]}" shell \
 	"ls -1t ${remote_dir}/*.jpeg ${remote_dir}/*.jpg 2>/dev/null | head -n 1" |

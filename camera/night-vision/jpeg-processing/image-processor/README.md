@@ -23,9 +23,9 @@ measurements such as lux, and can change with the camera's exposure and image
 processing.
 
 The repository-root `./build.sh` stages this app under the SDK's
-`project/app/a-eye-night-vision-jpeg/` directory. The SDK builds it with the
+`project/app/a-eye-night-vision-measurement/` directory. The SDK builds it with the
 selected Rockchip toolchain and includes it in the image as
-`/usr/bin/night-vision-jpeg`. The sibling
+`/usr/bin/night-vision-measurement`. The sibling
 [`../night-vision-service/`](../night-vision-service/) invokes it for each
 brightness sample and controls the shutter and IR LED.
 
@@ -36,7 +36,7 @@ make -C camera/night-vision/jpeg-processing/image-processor
 ```
 
 The executable is written to
-`camera/night-vision/jpeg-processing/image-processor/build/night-vision-jpeg`.
+`camera/night-vision/jpeg-processing/image-processor/build/night-vision-measurement`.
 Override `SDK_ROOT`, `TOOLCHAIN_DIR`, or `CROSS_COMPILE` for a separately
 installed toolchain. Clean generated files with:
 
@@ -48,9 +48,9 @@ To run it on the device, RKIPC must be running and JPEG snapshots enabled in
 its INI:
 
 ```sh
-adb push camera/night-vision/jpeg-processing/image-processor/build/night-vision-jpeg /tmp/night-vision-jpeg
-adb shell /tmp/night-vision-jpeg
-adb shell /tmp/night-vision-jpeg --interval-sec 3
+adb push camera/night-vision/jpeg-processing/image-processor/build/night-vision-measurement /tmp/night-vision-measurement
+adb shell /tmp/night-vision-measurement
+adb shell /tmp/night-vision-measurement --interval-sec 3
 ```
 
 The snapshot directory must be mounted and writable by RKIPC. Override it with

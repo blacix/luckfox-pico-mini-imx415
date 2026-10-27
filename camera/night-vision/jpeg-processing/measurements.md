@@ -1,8 +1,8 @@
 # Night-vision threshold measurements
 
 This log records controlled brightness measurements from the IMX415 camera via
-`/usr/bin/night-vision-jpeg`. The night-vision controller was stopped during
-capture so it could not change the LED or IR-cut state. Each condition used five
+`/usr/bin/night-vision-measurement`. The night-vision controller was stopped
+during capture so it could not change the LED or IR-cut state. Each condition used five
 samples, about two seconds apart. The camera reported 1280x720 frames and
 sampled a 160x90 grid (14,400 pixels).
 

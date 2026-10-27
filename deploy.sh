@@ -10,7 +10,7 @@ INIT_SCRIPT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-night-vision"
 NIGHT_VISION_CONFIG="${ROOT_DIR}/overlay/a-eye/etc/default/a-eye-night-vision"
 NIGHT_VISION_SHELL_SCRIPT="${ROOT_DIR}/overlay/a-eye/usr/bin/night-vision.sh"
 NIGHT_VISION_SERVICE_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision"
-NIGHT_VISION_IMAGE_PROCESSOR_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision-jpeg"
+NIGHT_VISION_MEASUREMENT_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision-measurement"
 CAMERA_INIT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-cam"
 CAMERA_INI="${ROOT_DIR}/camera/rkipc-imx415-720p.ini"
 CAMERA_IQ="${ROOT_DIR}/camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json"
@@ -21,7 +21,7 @@ REMOTE_INIT=/tmp/S99a-eye-night-vision
 REMOTE_NIGHT_VISION_CONFIG=/tmp/a-eye-night-vision
 REMOTE_NIGHT_VISION_SHELL_SCRIPT=/tmp/night-vision.sh
 REMOTE_NIGHT_VISION_SERVICE_BIN=/tmp/night-vision
-REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN=/tmp/night-vision-jpeg
+REMOTE_NIGHT_VISION_MEASUREMENT_BIN=/tmp/night-vision-measurement
 REMOTE_CAMERA_INIT=/tmp/S99a-eye-cam
 REMOTE_CAMERA_INI=/tmp/rkipc-imx415-720p.ini
 REMOTE_CAMERA_IQ=/tmp/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
@@ -31,7 +31,8 @@ INSTALLED_INIT=/etc/init.d/S99a-eye-night-vision
 INSTALLED_NIGHT_VISION_CONFIG=/etc/default/a-eye-night-vision
 INSTALLED_NIGHT_VISION_SHELL_SCRIPT=/usr/bin/night-vision.sh
 INSTALLED_NIGHT_VISION_SERVICE_BIN=/usr/bin/night-vision
-INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN=/usr/bin/night-vision-jpeg
+INSTALLED_NIGHT_VISION_MEASUREMENT_BIN=/usr/bin/night-vision-measurement
+RETIRED_NIGHT_VISION_JPEG_BIN=/usr/bin/night-vision-jpeg
 INSTALLED_CAMERA_INIT=/etc/init.d/S99a-eye-cam
 INSTALLED_CAMERA_INI=/usr/share/rkipc-imx415-720p.ini
 INSTALLED_CAMERA_IQ=/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
@@ -74,8 +75,8 @@ if [[ ! -f "${NIGHT_VISION_SERVICE_BIN}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${NIGHT_VISION_IMAGE_PROCESSOR_BIN}" ]]; then
-    echo "Missing JPEG image-processor executable: ${NIGHT_VISION_IMAGE_PROCESSOR_BIN}" >&2
+if [[ ! -f "${NIGHT_VISION_MEASUREMENT_BIN}" ]]; then
+    echo "Missing night-vision measurement executable: ${NIGHT_VISION_MEASUREMENT_BIN}" >&2
     echo "Build the SDK application packages first." >&2
     exit 1
 fi
@@ -117,7 +118,7 @@ adb push "${NIGHT_VISION_SHELL_SCRIPT}" "${REMOTE_NIGHT_VISION_SHELL_SCRIPT}"
 
 echo "Pushing night-vision service and JPEG image processor"
 adb push "${NIGHT_VISION_SERVICE_BIN}" "${REMOTE_NIGHT_VISION_SERVICE_BIN}"
-adb push "${NIGHT_VISION_IMAGE_PROCESSOR_BIN}" "${REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN}"
+adb push "${NIGHT_VISION_MEASUREMENT_BIN}" "${REMOTE_NIGHT_VISION_MEASUREMENT_BIN}"
 
 echo "Pushing camera init script and configuration"
 adb push "${CAMERA_INIT}" "${REMOTE_CAMERA_INIT}"
@@ -148,9 +149,10 @@ adb shell "
     mv '${REMOTE_INIT}' '${INSTALLED_INIT}'
     mkdir -p /etc/default
     mv '${REMOTE_NIGHT_VISION_CONFIG}' '${INSTALLED_NIGHT_VISION_CONFIG}'
-    chmod 0755 '${REMOTE_NIGHT_VISION_SERVICE_BIN}' '${REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN}'
+    chmod 0755 '${REMOTE_NIGHT_VISION_SERVICE_BIN}' '${REMOTE_NIGHT_VISION_MEASUREMENT_BIN}'
     mv '${REMOTE_NIGHT_VISION_SERVICE_BIN}' '${INSTALLED_NIGHT_VISION_SERVICE_BIN}'
-    mv '${REMOTE_NIGHT_VISION_IMAGE_PROCESSOR_BIN}' '${INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN}'
+    mv '${REMOTE_NIGHT_VISION_MEASUREMENT_BIN}' '${INSTALLED_NIGHT_VISION_MEASUREMENT_BIN}'
+    rm -f '${RETIRED_NIGHT_VISION_JPEG_BIN}'
     chmod 0755 '${REMOTE_CAMERA_INIT}'
     mv '${REMOTE_CAMERA_INIT}' '${INSTALLED_CAMERA_INIT}'
     mv '${REMOTE_CAMERA_INI}' '${INSTALLED_CAMERA_INI}'
@@ -166,7 +168,7 @@ adb shell "
     test -x '${INSTALLED_INIT}'
     test -x '${INSTALLED_NIGHT_VISION_SHELL_SCRIPT}'
     test -x '${INSTALLED_NIGHT_VISION_SERVICE_BIN}'
-    test -x '${INSTALLED_NIGHT_VISION_IMAGE_PROCESSOR_BIN}'
+    test -x '${INSTALLED_NIGHT_VISION_MEASUREMENT_BIN}'
     test -x '${INSTALLED_CAMERA_INIT}'
     test -f '${INSTALLED_CAMERA_INI}'
     test -f '${INSTALLED_CAMERA_IQ}'

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-JPEG_APP=/usr/bin/night-vision-jpeg
+MEASUREMENT_APP=/usr/bin/night-vision-measurement
 IMX415_INIT=/etc/init.d/S99a-eye-cam
 LED_DIR=/sys/class/leds/pwm0_led
 GPIO_EXPORT=/sys/class/gpio/export
@@ -49,8 +49,8 @@ if [ -x "$IMX415_INIT" ]; then
 fi
 
 : > "$LOG_FILE"
-if [ ! -x "$JPEG_APP" ]; then
-	log "missing JPEG image processor: $JPEG_APP"
+if [ ! -x "$MEASUREMENT_APP" ]; then
+	log "missing night-vision measurement executable: $MEASUREMENT_APP"
 	exit 1
 fi
 if [ ! -r "$LED_DIR/max_brightness" ] || [ ! -w "$LED_DIR/brightness" ]; then
@@ -117,7 +117,7 @@ night_candidate_count=0
 day_candidate_count=0
 
 while :; do
-	if SAMPLE_OUTPUT=$("$JPEG_APP" 2>&1); then
+	if SAMPLE_OUTPUT=$("$MEASUREMENT_APP" 2>&1); then
 		MEAN_Y=$(printf '%s\n' "$SAMPLE_OUTPUT" | sed -n 's/.*"mean_y":[[:space:]]*\([0-9][0-9.]*\).*/\1/p' | sed -n '1p')
 		P90_Y=$(printf '%s\n' "$SAMPLE_OUTPUT" | sed -n 's/.*"p90_y":[[:space:]]*\([0-9][0-9.]*\).*/\1/p' | sed -n '1p')
 		if ! awk -v mean="$MEAN_Y" -v p90="$P90_Y" \

@@ -26,7 +26,8 @@ CAMERA_IQ_TARGET="${OVERLAY_TARGET}/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR01
 NIGHT_VISION_SERVICE_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing/night-vision-service"
 NIGHT_VISION_SERVICE_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-service"
 NIGHT_VISION_IMAGE_PROCESSOR_SOURCE="${ROOT_DIR}/camera/night-vision/jpeg-processing/image-processor"
-NIGHT_VISION_IMAGE_PROCESSOR_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-jpeg"
+NIGHT_VISION_MEASUREMENT_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-measurement"
+LEGACY_NIGHT_VISION_JPEG_TARGET="${SDK_DIR}/project/app/a-eye-night-vision-jpeg"
 NIGHT_VISION_COMMON_SOURCE="${ROOT_DIR}/camera/night-vision/common"
 
 if [[ "$#" -gt 1 ]]; then
@@ -162,21 +163,23 @@ fi
 echo "Copying tracked IMX415 driver into the SDK kernel source tree"
 cp -- "${CAMERA_DRIVER_SOURCE}" "${CAMERA_DRIVER_TARGET}"
 
-echo "Staging the JPEG image processor for the SDK application build"
+echo "Staging the night-vision measurement app for the SDK application build"
+rm -rf -- "${LEGACY_NIGHT_VISION_JPEG_TARGET}"
+rm -f -- "${SDK_DIR}/project/app/out/root/usr/bin/night-vision-jpeg"
 mkdir -p \
-    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/common" \
-    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/tjpgd3/src"
+    "${NIGHT_VISION_MEASUREMENT_TARGET}/common" \
+    "${NIGHT_VISION_MEASUREMENT_TARGET}/tjpgd3/src"
 cp -- "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/Makefile" \
-    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/Makefile"
+    "${NIGHT_VISION_MEASUREMENT_TARGET}/Makefile"
 cp -- "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/main.cpp" \
-    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/main.cpp"
+    "${NIGHT_VISION_MEASUREMENT_TARGET}/main.cpp"
 cp -- "${NIGHT_VISION_COMMON_SOURCE}/brightness_metrics.h" \
-    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/common/brightness_metrics.h"
+    "${NIGHT_VISION_MEASUREMENT_TARGET}/common/brightness_metrics.h"
 cp -- \
     "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgd.c" \
     "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgd.h" \
     "${NIGHT_VISION_IMAGE_PROCESSOR_SOURCE}/tjpgd3/src/tjpgdcnf.h" \
-    "${NIGHT_VISION_IMAGE_PROCESSOR_TARGET}/tjpgd3/src/"
+    "${NIGHT_VISION_MEASUREMENT_TARGET}/tjpgd3/src/"
 
 echo "Staging the night-vision service for the SDK application build"
 mkdir -p "${NIGHT_VISION_SERVICE_TARGET}"

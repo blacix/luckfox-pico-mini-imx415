@@ -169,7 +169,7 @@ The tracked project files copied into the SDK are:
 | `overlay/a-eye/usr/bin/rkipc-supervisor.sh` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/bin/rkipc-supervisor.sh` (IMX415 only) |
 | `camera/rkipc-imx415-720p.ini` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/rkipc-imx415-720p.ini` (IMX415 only) |
 | `camera/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` | `sdk/luckfox-pico/project/cfg/BoardConfig_IPC/overlay/overlay-luckfox-buildroot-init/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json` (IMX415 only) |
-| `camera/night-vision/jpeg-processing/image-processor/` and shared `brightness_metrics.h` | `sdk/luckfox-pico/project/app/a-eye-night-vision-jpeg/` (staged and built for all camera selections) |
+| `camera/night-vision/jpeg-processing/image-processor/` and shared `brightness_metrics.h` | `sdk/luckfox-pico/project/app/a-eye-night-vision-measurement/` (staged and built for all camera selections) |
 | `camera/night-vision/jpeg-processing/night-vision-service/` | `sdk/luckfox-pico/project/app/a-eye-night-vision-service/` (staged and built for all camera selections) |
 
 `build.sh` is the tracked build entry point; it is not an SDK configuration
@@ -207,9 +207,12 @@ synchronization or build steps need updating. It copies tracked kernel inputs,
 driver source, and the files required for the selected camera into the SDK
 before building. It stages the JPEG image processor and night-vision service
 as separate SDK app packages. The SDK builds them with the selected Rockchip
-toolchain and includes `/usr/bin/night-vision-jpeg` (snapshot analysis) and
-`/usr/bin/night-vision` (the controller) in the image. The init service starts
+toolchain and includes `/usr/bin/night-vision-measurement` (snapshot analysis)
+and `/usr/bin/night-vision` (the controller) in the image. The init service starts
 the controller on IMX415 builds; the image processor is called by the service.
+The measurement executable is named `night-vision-measurement`; the controller
+binary remains `night-vision` and its init service remains
+`S99a-eye-night-vision`.
 The stock
 Pico Mini BoardConfig already selects the init
 overlay, so no custom BoardConfig is needed. The tracked DTSI contains the
@@ -310,8 +313,8 @@ tracked project files to the device:
 - `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
 - `overlay/a-eye/usr/bin/night-vision.sh` to `/usr/bin/night-vision.sh` as an
   optional manual alternative to the C++ service;
-- `night-vision` and `night-vision-jpeg` from the SDK app build to
-  `/usr/bin/night-vision` and `/usr/bin/night-vision-jpeg`;
+- `night-vision` and `night-vision-measurement` from the SDK app build to
+  `/usr/bin/night-vision` and `/usr/bin/night-vision-measurement`;
 - `overlay/a-eye/usr/bin/rkipc-supervisor.sh` to
   `/usr/bin/rkipc-supervisor.sh`;
 - `overlay/a-eye/etc/init.d/S99a-eye-night-vision` to
@@ -572,7 +575,7 @@ The init script can also be controlled manually from the device shell:
 
 On both camera builds, `S99a-eye-night-vision` supervises
 `/usr/bin/night-vision`. The C++ controller asks
-`/usr/bin/night-vision-jpeg` for a sample every 2 seconds by default and uses
+`/usr/bin/night-vision-measurement` for a sample every 2 seconds by default and uses
 its `mean_y` value. The init script reads `/etc/default/a-eye-night-vision` and
 passes its settings as command-line options; the C++ executable does not read
 that file itself. Edit the tracked `overlay/a-eye/etc/default/a-eye-night-vision`
