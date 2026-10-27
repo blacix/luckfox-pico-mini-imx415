@@ -334,7 +334,21 @@ Options and constraints still to resolve:
   cost, but it requires hardware support. No sensor has been selected or
   integrated.
 - **Rockchip Smart IR:** the SDK's RV1106-named ISP package includes
-  `libsmartIr`, its API header, and `sample_smartIr.cpp`. The sample uses the
+  `libsmartIr.so` (shared library), `libsmartIr.a` (static library), the API
+  header `rkaiq/smartIr/rk_smart_ir_api.h`, and `sample_smartIr.cpp`.
+  Link with `-lsmartIr`. The core API functions are
+  `rk_smart_ir_init()` (initialize with the existing AIQ context),
+  `rk_smart_ir_setAttr()` (configure automatic switching and thresholds),
+  `rk_smart_ir_runOnce()` (process ISP statistics and return a
+  `rk_smart_ir_result_t` decision), and `rk_smart_ir_deInit()` (release the
+  detector). The SDK sample obtains statistics through
+  `rk_aiq_uapi2_sysctl_get3AStatsBlk()` and releases them with
+  `rk_aiq_uapi2_sysctl_release3AStatsRef()`. These are in-process SDK library
+  calls, not commands exposed by RKIPC's existing client socket.
+  The library/header and sample are under
+  `sdk/luckfox-pico/media/isp/release_camera_engine_rkaiq_rv1106_arm-rockchip830-linux-uclibcgnueabihf/`,
+  in `lib/`, `include/`, and `rkisp_demo/demo/sample/`, respectively.
+  The sample uses the
   ISP owner's context and statistics, with environmental-light thresholds,
   IR color-ratio calibration, and switching counts. Existing RKIPC socket
   APIs do not expose this detector. Our `rk_isp_set_night_to_day()` call
