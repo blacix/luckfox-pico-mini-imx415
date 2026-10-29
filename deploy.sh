@@ -165,7 +165,8 @@ if [[ "$DEPLOY_TRANSPORT" == adb ]]; then
 else
 	trap stop_ssh_master EXIT
 	start_ssh_master
-	if ! remote_exec sh -c 'test "$(id -u)" = 0'; then
+	REMOTE_UID="$(remote_exec id -u)"
+	if [[ "$REMOTE_UID" != 0 ]]; then
 		echo "SSH deployment requires root login (tried ${SSH_TARGET})." >&2
 		exit 1
 	fi
@@ -200,7 +201,7 @@ push_file "${CAMERA_IQ}" "${REMOTE_CAMERA_IQ}"
 
 echo "Installing files and restarting the camera services via ${DEPLOY_TRANSPORT}"
 remote_exec sh -s <<REMOTE_INSTALL
-    set -e
+    set -ex
     if [ -x '${INSTALLED_INIT}' ]; then
         '${INSTALLED_INIT}' stop
     fi
