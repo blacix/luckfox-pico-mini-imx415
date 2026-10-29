@@ -7,11 +7,13 @@ PIDFILE=/run/a-eye-night-vision.pid
 LED_BRIGHTNESS=/sys/class/leds/pwm0_led/brightness
 SHUTTER_VALUE=/sys/class/gpio/gpio116/value
 STOP_TIMEOUT=12
-NIGHT_ON_THRESHOLD=65
-DAY_ON_THRESHOLD=85
+NIGHT_ON_THRESHOLD=75
+DAY_ON_THRESHOLD=75
 DAY_P90_MIN=110
-DAY_P90_MAX=180
+DAY_P90_MAX=210
+NIGHT_LED_MEAN_COMPENSATION=20
 INTERVAL_SECONDS=2
+MODE_SETTLE_SECONDS=10
 SWITCH_SAMPLES_REQUIRED=2
 LED_INTENSITY_PERCENT=10
 
@@ -41,7 +43,9 @@ start() {
 		--day-on "$DAY_ON_THRESHOLD" \
 		--day-p90-min "$DAY_P90_MIN" \
 		--day-p90-max "$DAY_P90_MAX" \
+		--night-led-mean-compensation "$NIGHT_LED_MEAN_COMPENSATION" \
 		--interval-sec "$INTERVAL_SECONDS" \
+		--mode-settle-sec "$MODE_SETTLE_SECONDS" \
 		--samples-required "$SWITCH_SAMPLES_REQUIRED" \
 		--led-intensity-percent "$LED_INTENSITY_PERCENT"; then
 		rm -f "$PIDFILE"

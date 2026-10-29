@@ -261,11 +261,12 @@ vendor application patch. Do not implement both paths by default.
   consume the measurements exposed by the patched `rkipc`.
 - The init script reads `/etc/default/a-eye-night-vision` and passes the
   thresholds, interval, and consecutive-sample requirement to the controller.
-  Current settings enter night below mean luma 65 and return to day above 85
-  only when `p90_y` is in 110..180. The IR LED defaults to 10% brightness. The
-  sample interval is 2 seconds,
-  and `SWITCH_SAMPLES_REQUIRED=2` requires two consecutive qualifying samples
-  for a transition.
+  Current settings enter night below mean luma 75 and return to day when the
+  mean minus `NIGHT_LED_MEAN_COMPENSATION` is above 75, with `p90_y` in
+  110..210. The compensation defaults to 20, the IR LED defaults to 10%
+  brightness, the interval is 2 seconds, and `MODE_SETTLE_SECONDS=10` delays
+  the next measurement after a mode switch. `SWITCH_SAMPLES_REQUIRED=2`
+  requires two consecutive qualifying samples for a transition.
   Earlier supplied SC3336 samples were 114.648 in normal light and 93.153 in
   the dark condition.
 - Use separate thresholds for entering and leaving night mode, require
@@ -289,10 +290,12 @@ measure the combined effect of ambient light and reflected IR, after camera
 exposure and ISP processing. They describe image brightness, not ambient
 illumination independently of the LED.
 
-The controller enters night mode when `mean_y < 65` and returns to day when
-`mean_y > 85` and `p90_y` is in the inclusive range 110..180. It uses 10% IR
-LED brightness, requires two consecutive qualifying samples, and waits 2
-seconds between checks. Earlier 50% LED captures showed the dark IR-lit scene
+The controller enters night mode when `mean_y < 75` and returns to day when
+`mean_y - NIGHT_LED_MEAN_COMPENSATION > 75` and `p90_y` is in the inclusive
+range 110..210. It uses a default mean compensation of 20, 10% IR LED
+brightness, requires two consecutive qualifying samples, waits 10 seconds after
+a mode switch for exposure to settle, and otherwise waits 2 seconds between
+checks. Earlier 50% LED captures showed the dark IR-lit scene
 inside the day acceptance region. At 10%, the latest lights-off captures had
 day-position/LED-off `mean_y` 63.651–68.367 and night-position/LED-on
 `mean_y` 91.902–92.148 with `p90_y` 97–100. The latest lights-on night-state
@@ -302,6 +305,18 @@ do not qualify for day, while the lit samples do. This is evidence for the
 current defaults in these measured conditions, not a general guarantee;
 close reflective objects and other scenes can still change the captured
 brightness substantially.
+
+**Next: characterize LED compensation versus output level.** In one fixed dark
+scene, hold the camera in night mode (night shutter position and the same ISP
+night setting), then collect repeated `night-vision-measurement` samples with
+the IR LED off, at 10%, 50%, and 100% brightness. Allow exposure to settle
+after each LED change and record the actual LED brightness, `mean_y`, and
+`p90_y` in the measurement log. Use the LED-off result as the baseline and
+compare the mean increase at each output level. Fit a linear compensation from
+the 10% and 100% measurements, then use the 50% measurement to check whether
+that model is reasonable. Only adopt linear scaling if the intermediate result
+supports it; otherwise retain a fixed estimate or use a better-supported
+calibration.
 
 Controlled captures are recorded in
 [the measurement log](camera/night-vision/jpeg-processing/measurements.md).

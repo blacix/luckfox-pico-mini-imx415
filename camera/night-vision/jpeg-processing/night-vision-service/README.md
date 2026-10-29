@@ -4,19 +4,23 @@
 in [`../image-processor/`](../image-processor/README.md). Every 2 seconds by
 default, it reads the processor's `mean_y` and `p90_y` JSON values and applies
 hysteresis.
-The init script reads thresholds, sample interval, and required consecutive
-sample count from
+The init script reads thresholds, sample interval, mode settle time, LED mean
+compensation, and required consecutive sample count from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below `mean_y` 70. It returns
-to day only when `mean_y` is above 90 and `p90_y` is in the inclusive 105..180
-acceptance band. These are trial settings to validate across lighting and
-exposure conditions. Near-saturated reflective-object samples measured at p90
-248 remain outside the band. On IMX415, the
+tracked source config currently enters night mode below `mean_y` 75. It returns
+to day when `mean_y` minus `NIGHT_LED_MEAN_COMPENSATION` is above 75 and
+`p90_y` is in the inclusive 110..210 acceptance band. The compensation defaults
+to 20 and applies only to the day-return mean while night mode is active;
+`p90_y` is left unchanged. At a measured night-state one-lamp mean of about
+100.8, subtracting 20 produces about 80.8, so the current mean threshold passes
+in that condition. The value is a trial estimate from dark
+conditions at 10% LED intensity and may overcompensate in brighter scenes.
+On IMX415, the
 shutter input is active-low: night mode sets
 GPIO116 low and day mode sets it high. On SC3336, GPIO116 is left untouched
 because it carries the camera reference clock. Both camera modes drive the PWM
-IR LED at half its reported maximum brightness at night and turn it off by day.
+IR LED at 10% of its reported maximum brightness at night and turn it off by day.
 
 The grayscale backend is selected at compile time with `RKIPC_NIGHT_MODE`:
 
@@ -32,8 +36,13 @@ The grayscale backend is selected at compile time with `RKIPC_NIGHT_MODE`:
 If RKIPC's socket is unavailable, LED and shutter control continue and the
 selected image-mode request is retried on later samples.
 
+After switching modes, the controller waits 10 seconds by default before its
+next brightness sample (`MODE_SETTLE_SECONDS`); regular checks are 2 seconds
+apart. Set the mode settle time to 0 to disable this delay.
+
 The program accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
-`--interval-sec`, and `--samples-required`. A transition requires two
+`--night-led-mean-compensation`, `--interval-sec`, `--mode-settle-sec`,
+`--samples-required`, and `--led-intensity-percent`. A transition requires two
 consecutive qualifying samples by default (`SWITCH_SAMPLES_REQUIRED=2` in the
 tracked config); a nonqualifying or invalid sample resets the corresponding
 count. When launched through the init script, it receives values from

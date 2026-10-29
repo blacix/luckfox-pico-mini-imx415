@@ -7,11 +7,13 @@ GPIO_EXPORT=/sys/class/gpio/export
 GPIO_DIR=/sys/class/gpio/gpio116
 LOG_FILE=/tmp/night-vision.log
 CONFIG_FILE=/etc/default/a-eye-night-vision
-NIGHT_ON_THRESHOLD=65
-DAY_ON_THRESHOLD=85
+NIGHT_ON_THRESHOLD=75
+DAY_ON_THRESHOLD=75
 DAY_P90_MIN=110
-DAY_P90_MAX=180
+DAY_P90_MAX=210
+NIGHT_LED_MEAN_COMPENSATION=20
 INTERVAL_SECONDS=2
+MODE_SETTLE_SECONDS=10
 SWITCH_SAMPLES_REQUIRED=2
 LED_INTENSITY_PERCENT=10
 
@@ -86,12 +88,30 @@ if ! awk -v minimum="$DAY_P90_MIN" -v maximum="$DAY_P90_MAX" \
 	log 'DAY_P90_MIN and DAY_P90_MAX must define an increasing range within 0..255'
 	exit 1
 fi
+if ! awk -v compensation="$NIGHT_LED_MEAN_COMPENSATION" \
+	'BEGIN { exit !(compensation ~ /^[0-9]+([.][0-9]+)?$/ && compensation >= 0 && compensation <= 255) }'; then
+	log 'NIGHT_LED_MEAN_COMPENSATION must be a number from 0 to 255'
+	exit 1
+fi
+if ! awk -v night="$NIGHT_ON_THRESHOLD" -v day="$DAY_ON_THRESHOLD" \
+	-v compensation="$NIGHT_LED_MEAN_COMPENSATION" \
+	'BEGIN { exit !(night >= 0 && night <= 255 && day >= 0 && day <= 255 && day + compensation > night) }'; then
+	log 'the effective day-return threshold (DAY_ON_THRESHOLD plus LED compensation) must exceed NIGHT_ON_THRESHOLD'
+	exit 1
+fi
 case "$SWITCH_SAMPLES_REQUIRED" in
 	''|*[!0-9]*) log 'SWITCH_SAMPLES_REQUIRED must be an integer from 1 to 100'; exit 1 ;;
 esac
 if [ "$SWITCH_SAMPLES_REQUIRED" -lt 1 ] ||
 	[ "$SWITCH_SAMPLES_REQUIRED" -gt 100 ]; then
 	log 'SWITCH_SAMPLES_REQUIRED must be an integer from 1 to 100'
+	exit 1
+fi
+case "$MODE_SETTLE_SECONDS" in
+	''|*[!0-9]*) log 'MODE_SETTLE_SECONDS must be an integer from 0 to 3600'; exit 1 ;;
+esac
+if [ "$MODE_SETTLE_SECONDS" -gt 3600 ]; then
+	log 'MODE_SETTLE_SECONDS must be an integer from 0 to 3600'
 	exit 1
 fi
 case "$LED_INTENSITY_PERCENT" in
@@ -107,9 +127,9 @@ write_value "$LED_DIR/brightness" 0
 if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 	sleep 1
 	write_value "$GPIO_DIR/value" 1
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; LED intensity ${LED_INTENSITY_PERCENT}% (${LED_NIGHT_BRIGHTNESS}/${LED_MAX}); shutter control enabled"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} after ${NIGHT_LED_MEAN_COMPENSATION} mean_y LED compensation with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; ${MODE_SETTLE_SECONDS}s mode settle; LED intensity ${LED_INTENSITY_PERCENT}% (${LED_NIGHT_BRIGHTNESS}/${LED_MAX}); shutter control enabled"
 else
-	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; LED intensity ${LED_INTENSITY_PERCENT}% (${LED_NIGHT_BRIGHTNESS}/${LED_MAX}); LED-only mode (SC3336)"
+	log "monitoring mean_y; night below ${NIGHT_ON_THRESHOLD}, day above ${DAY_ON_THRESHOLD} after ${NIGHT_LED_MEAN_COMPENSATION} mean_y LED compensation with p90_y in [${DAY_P90_MIN}, ${DAY_P90_MAX}]; ${SWITCH_SAMPLES_REQUIRED} consecutive samples required; ${MODE_SETTLE_SECONDS}s mode settle; LED intensity ${LED_INTENSITY_PERCENT}% (${LED_NIGHT_BRIGHTNESS}/${LED_MAX}); LED-only mode (SC3336)"
 fi
 mode=day
 last_error=
@@ -117,6 +137,7 @@ night_candidate_count=0
 day_candidate_count=0
 
 while :; do
+	mode_changed=0
 	if SAMPLE_OUTPUT=$("$MEASUREMENT_APP" 2>&1); then
 		MEAN_Y=$(printf '%s\n' "$SAMPLE_OUTPUT" | sed -n 's/.*"mean_y":[[:space:]]*\([0-9][0-9.]*\).*/\1/p' | sed -n '1p')
 		P90_Y=$(printf '%s\n' "$SAMPLE_OUTPUT" | sed -n 's/.*"p90_y":[[:space:]]*\([0-9][0-9.]*\).*/\1/p' | sed -n '1p')
@@ -157,6 +178,7 @@ while :; do
 				fi
 				write_value "$LED_DIR/brightness" "$LED_NIGHT_BRIGHTNESS"
 				mode=night
+				mode_changed=1
 				night_candidate_count=0
 				if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 					log "night mode: shutter low, IR LED brightness ${LED_NIGHT_BRIGHTNESS}/${LED_MAX}"
@@ -168,11 +190,12 @@ while :; do
 			night_candidate_count=0
 			if awk \
 				-v mean="$MEAN_Y" \
+				-v led_compensation="$NIGHT_LED_MEAN_COMPENSATION" \
 				-v threshold="$DAY_ON_THRESHOLD" \
 				-v p90="$P90_Y" \
 				-v p90_min="$DAY_P90_MIN" \
 				-v p90_max="$DAY_P90_MAX" \
-				'BEGIN { exit !(mean > threshold && p90 >= p90_min && p90 <= p90_max) }'; then
+				'BEGIN { exit !(mean - led_compensation > threshold && p90 >= p90_min && p90 <= p90_max) }'; then
 				day_candidate_count=$((day_candidate_count + 1))
 			else
 				day_candidate_count=0
@@ -184,6 +207,7 @@ while :; do
 					write_value "$GPIO_DIR/value" 1
 				fi
 				mode=day
+				mode_changed=1
 				day_candidate_count=0
 				if [ "$SHUTTER_CONTROL" -eq 1 ]; then
 					log 'day mode: shutter high, IR LED off'
@@ -194,5 +218,9 @@ while :; do
 		fi
 	fi
 
-	sleep "$INTERVAL_SECONDS"
+	if [ "$mode_changed" -eq 1 ]; then
+		sleep "$MODE_SETTLE_SECONDS"
+	else
+		sleep "$INTERVAL_SECONDS"
+	fi
 done

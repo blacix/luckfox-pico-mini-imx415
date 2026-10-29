@@ -585,16 +585,25 @@ average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
 exposure and image processing. The current settings enter night mode below mean
-luma 65 and return to day mode above mean luma 85 only when `p90_y` is in the
-inclusive 110..180 range. The tracked config requires two consecutive qualifying samples
+luma 75 and return to day mode when the compensated mean exceeds 75 and `p90_y`
+is in the inclusive 110..210 range. The tracked config requires two consecutive qualifying samples
 (`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
-the count. `LED_INTENSITY_PERCENT=10` sets the night-mode LED to 10% of the
+the count. After a successful mode change, `MODE_SETTLE_SECONDS=10` delays the
+next measurement to let camera exposure adjust; ordinary checks remain 2 seconds
+apart. In night mode, `NIGHT_LED_MEAN_COMPENSATION=20` is subtracted from
+`mean_y` for the return-to-day check because the IR LED raises the measured
+brightness. It does not change the `p90_y` gate or the night-entry check. The
+value is an estimate based on dark-condition measurements at 10% LED intensity;
+it can overcompensate in brighter scenes. With the current day threshold of 75,
+the raw night-mode mean must exceed 95 to pass the compensated mean check.
+`LED_INTENSITY_PERCENT=10` sets the night-mode LED to 10% of the
 device's reported `max_brightness`, rounded to the nearest integer. Set it to
 an integer from 0 to 100; the actual brightness value depends on the hardware
 maximum (26 at 10% when the maximum is 255). The init script passes this setting to the C++ app;
 the optional shell controller reads it from the same config file. The C++ program also
 accepts `--night-on`, `--day-on`, `--day-p90-min`, `--day-p90-max`,
-`--interval-sec`, `--samples-required`, and `--led-intensity-percent` overrides.
+`--night-led-mean-compensation`, `--interval-sec`, `--mode-settle-sec`,
+`--samples-required`, and `--led-intensity-percent` overrides.
 A mode transition requires two consecutive qualifying samples by default; an
 invalid or nonqualifying sample resets the relevant count. Night mode sets the
 PWM LED to the configured intensity. On IMX415, it also sets GPIO116 low

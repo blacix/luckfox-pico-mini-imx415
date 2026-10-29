@@ -23,11 +23,13 @@ constexpr char kLogFile[] = "/tmp/night-vision.log";
 #if !RKIPC_NIGHT_MODE
 constexpr char kSaturationStateFile[] = "/run/a-eye-day-saturation";
 #endif
-constexpr double kDefaultNightOnThreshold = 65.0;
-constexpr double kDefaultDayOnThreshold = 85.0;
+constexpr double kDefaultNightOnThreshold = 75.0;
+constexpr double kDefaultDayOnThreshold = 75.0;
 constexpr double kDefaultDayP90Minimum = 110.0;
-constexpr double kDefaultDayP90Maximum = 180.0;
+constexpr double kDefaultDayP90Maximum = 210.0;
+constexpr double kDefaultNightLedMeanCompensation = 20.0;
 constexpr unsigned int kDefaultIntervalSeconds = 2;
+constexpr unsigned int kDefaultModeSettleSeconds = 10;
 constexpr unsigned int kDefaultSwitchSamplesRequired = 2;
 constexpr unsigned int kDefaultLedIntensityPercent = 10;
 
@@ -38,7 +40,9 @@ struct Options {
 	double day_on_threshold = kDefaultDayOnThreshold;
 	double day_p90_minimum = kDefaultDayP90Minimum;
 	double day_p90_maximum = kDefaultDayP90Maximum;
+	double night_led_mean_compensation = kDefaultNightLedMeanCompensation;
 	unsigned int interval_seconds = kDefaultIntervalSeconds;
+	unsigned int mode_settle_seconds = kDefaultModeSettleSeconds;
 	unsigned int switch_samples_required = kDefaultSwitchSamplesRequired;
 	unsigned int led_intensity_percent = kDefaultLedIntensityPercent;
 };
@@ -352,7 +356,8 @@ bool parse_options(int argc, char **argv, Options &options) {
 	for (int i = 1; i < argc; ++i) {
 		const std::string argument(argv[i]);
 		if (argument == "--night-on" || argument == "--day-on" ||
-		    argument == "--day-p90-min" || argument == "--day-p90-max") {
+		    argument == "--day-p90-min" || argument == "--day-p90-max" ||
+		    argument == "--night-led-mean-compensation") {
 			if (i + 1 >= argc)
 				return false;
 			double value = 0.0;
@@ -364,9 +369,12 @@ bool parse_options(int argc, char **argv, Options &options) {
 				options.day_on_threshold = value;
 			else if (argument == "--day-p90-min")
 				options.day_p90_minimum = value;
-			else
+			else if (argument == "--day-p90-max")
 				options.day_p90_maximum = value;
+			else
+				options.night_led_mean_compensation = value;
 		} else if (argument == "--interval-sec" ||
+		           argument == "--mode-settle-sec" ||
 		           argument == "--samples-required" ||
 		           argument == "--led-intensity-percent") {
 			if (i + 1 >= argc)
@@ -374,13 +382,19 @@ bool parse_options(int argc, char **argv, Options &options) {
 			char *end = nullptr;
 			errno = 0;
 			const unsigned long value = std::strtoul(argv[++i], &end, 10);
-			const unsigned long maximum = argument == "--interval-sec" ? 3600 : 100;
+			const unsigned long maximum =
+			    (argument == "--interval-sec" || argument == "--mode-settle-sec")
+			        ? 3600
+			        : 100;
 			const bool zero_not_allowed =
-			    value == 0 && argument != "--led-intensity-percent";
+			    value == 0 && argument != "--led-intensity-percent" &&
+			    argument != "--mode-settle-sec";
 			if (errno || end == argv[i] || *end || zero_not_allowed || value > maximum)
 				return false;
 			if (argument == "--interval-sec")
 				options.interval_seconds = static_cast<unsigned int>(value);
+			else if (argument == "--mode-settle-sec")
+				options.mode_settle_seconds = static_cast<unsigned int>(value);
 			else if (argument == "--samples-required")
 				options.switch_samples_required = static_cast<unsigned int>(value);
 			else
@@ -389,15 +403,21 @@ bool parse_options(int argc, char **argv, Options &options) {
 			return false;
 		}
 	}
-	return options.night_on_threshold < options.day_on_threshold &&
-	       options.day_p90_minimum < options.day_p90_maximum;
+	// LED compensation is subtracted from night-mode measurements, so the
+	// effective raw boundary for returning to day is day_on + compensation.
+	return options.night_on_threshold <
+	           options.day_on_threshold + options.night_led_mean_compensation &&
+	       options.day_p90_minimum < options.day_p90_maximum &&
+	       options.night_led_mean_compensation <= 255.0;
 }
 
 void print_usage(const char *program) {
 	std::cerr << "Usage: " << program
 	          << " [--night-on LUMA] [--day-on LUMA]"
 	             " [--day-p90-min LUMA] [--day-p90-max LUMA]"
-	             " [--interval-sec N] [--samples-required N]"
+	             " [--night-led-mean-compensation LUMA]"
+	             " [--interval-sec N] [--mode-settle-sec N]"
+	             " [--samples-required N]"
 	             " [--led-intensity-percent PERCENT]\n";
 }
 
@@ -448,9 +468,12 @@ int main(int argc, char **argv) {
 	             ", day above " + std::to_string(options.day_on_threshold) +
 	             " with p90_y in [" + std::to_string(options.day_p90_minimum) +
 	             ", " + std::to_string(options.day_p90_maximum) +
-	             "]; switching requires " +
+	             "]; night-mode day-return subtracts mean_y LED compensation " +
+	             std::to_string(options.night_led_mean_compensation) +
+	             "; switching requires " +
 	             std::to_string(options.switch_samples_required) +
-	             " consecutive samples; LED intensity " +
+	             " consecutive samples; mode settle " +
+	             std::to_string(options.mode_settle_seconds) + "s; LED intensity " +
 	             std::to_string(options.led_intensity_percent) + "% (" +
 	             std::to_string(led_night_brightness) + "/" + std::to_string(led_max) + ")");
 
@@ -458,6 +481,7 @@ int main(int argc, char **argv) {
 	unsigned int night_candidate_count = 0;
 	unsigned int day_candidate_count = 0;
 	while (g_running) {
+		bool mode_changed = false;
 		BrightnessSample sample;
 		std::string error;
 		if (!capture_brightness_sample(sample, error)) {
@@ -479,8 +503,11 @@ int main(int argc, char **argv) {
 			}
 			const bool night_candidate =
 			    sample.mean_y < options.night_on_threshold;
+			// Night-mode samples include IR LED light. Subtract its configured
+			// estimate only for the return-to-day mean check; p90 remains raw.
 			const bool day_candidate =
-			    sample.mean_y > options.day_on_threshold &&
+			    sample.mean_y - options.night_led_mean_compensation >
+				    options.day_on_threshold &&
 			    sample.p90_y >= options.day_p90_minimum &&
 			    sample.p90_y <= options.day_p90_maximum;
 
@@ -490,8 +517,8 @@ int main(int argc, char **argv) {
 				                            ? night_candidate_count + 1
 				                            : 0;
 				if (night_candidate_count >= options.switch_samples_required) {
-					set_night_mode(mode, led_night_brightness, led_max,
-						       shutter_control);
+					mode_changed = set_night_mode(mode, led_night_brightness,
+							      led_max, shutter_control);
 					night_candidate_count = 0;
 				}
 			} else {
@@ -500,13 +527,14 @@ int main(int argc, char **argv) {
 				                          ? day_candidate_count + 1
 				                          : 0;
 				if (day_candidate_count >= options.switch_samples_required) {
-					set_day_mode(mode, true, shutter_control);
+					mode_changed = set_day_mode(mode, true, shutter_control);
 					day_candidate_count = 0;
 				}
 			}
 		}
 		apply_grayscale_mode(mode == Mode::Night, grayscale_state);
-		sleep_seconds(options.interval_seconds);
+		sleep_seconds(mode_changed ? options.mode_settle_seconds
+					   : options.interval_seconds);
 	}
 
 	cleanup(shutter_control, grayscale_state);
