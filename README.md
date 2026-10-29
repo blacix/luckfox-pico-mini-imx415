@@ -298,13 +298,19 @@ CONFIG_LEDS_PWM=y
 ## Deploying changes for quick testing
 
 After making a change that can be tested against the currently installed
-kernel and device tree, build the kernel module if it changed, connect the
-device with root ADB, then run this from the repository root. The script
-expects the module artifact to exist even when only a config or script changed;
-in that case it redeploys the existing module too.
+kernel and device tree, rebuild the kernel module if its source changed and
+rebuild the relevant SDK app package if its source changed. `deploy.sh` requires
+the module and both app binaries to exist in their SDK output locations; it
+deploys those existing artifacts and does not build them. For config or script
+changes, it redeploys the existing module and app binaries too. Run it from the
+repository root with no argument to use ADB, or pass the device IP to use SSH
+and SCP. SSH mode connects as `root@IP` and requires root SSH login. OpenSSH
+connection multiplexing reuses the authenticated connection, so password
+authentication prompts once for the deployment:
 
 ```sh
 ./deploy.sh
+./deploy.sh 192.168.100.93
 ```
 
 For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
@@ -328,12 +334,14 @@ tracked project files to the device:
 
 The script stops the LED and camera services, unloads the currently loaded
 IMX415 module if present, installs and loads the new module, then starts the
-camera and night-vision services. The camera service launches `rkipc` with the deployed INI and IQ
-directory. It also removes the retired `/usr/bin/night-vision.sh`. `deploy.sh`
-does not remove old init-service filenames from a
-running image; flash a newly built image to apply the service rename cleanly.
-Deployment requires a connected device with a root ADB shell and a module
-built for the device's currently running kernel.
+camera and night-vision services. The camera service launches `rkipc` with the
+deployed INI and IQ directory. The script removes the retired
+`/usr/bin/night-vision-jpeg` measurement binary. It does not remove old
+init-service filenames from a running image; flash a newly built image to
+apply the service rename cleanly.
+Deployment requires either a connected device with root ADB access or root SSH
+access to the supplied IP address, plus a module built for the device's
+currently running kernel. SSH mode requires Ubuntu's `openssh-client` package.
 
 This is an iteration shortcut, not a replacement for a firmware build. Use it
 for changes to the module binary, INI/IQ files, or deployed scripts when the

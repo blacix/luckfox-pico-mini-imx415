@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+set -x
+
+if [[ "$#" -gt 1 ]]; then
+	echo "Usage: $0 [DEVICE_IP]" >&2
+	exit 2
+fi
+
+DEPLOY_TRANSPORT=adb
+SSH_TARGET=
+SSH_CONTROL_DIR=
+SSH_CONTROL_PATH=
+if [[ "$#" -eq 1 ]]; then
+	DEPLOY_TRANSPORT=ssh
+	SSH_TARGET="root@$1"
+	for tool in ssh scp; do
+		if ! command -v "$tool" >/dev/null 2>&1; then
+			echo "Missing required SSH client command: $tool" >&2
+			echo "Install it with: sudo apt install openssh-client" >&2
+			exit 1
+		fi
+	done
+fi
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 MODULE="${ROOT_DIR}/sdk/luckfox-pico/sysdrv/source/objs_kernel/drv_ko/lib/modules/5.10.160/kernel/drivers/media/i2c/imx415.ko"
@@ -37,6 +59,44 @@ INSTALLED_CAMERA_INIT=/etc/init.d/S99a-eye-cam
 INSTALLED_CAMERA_INI=/usr/share/rkipc-imx415-720p.ini
 INSTALLED_CAMERA_IQ=/usr/share/iqfiles/imx415_CMK-OT2022-PX1_IR0147-36IRC-8M-F20.json
 INSTALLED_MODULE=/oem/usr/ko/imx415.ko
+
+start_ssh_master() {
+	SSH_CONTROL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/a-eye-deploy.XXXXXX")"
+	SSH_CONTROL_PATH="${SSH_CONTROL_DIR}/control"
+	ssh -M -N -f \
+		-o ControlMaster=yes \
+		-o ControlPersist=60 \
+		-o ControlPath="$SSH_CONTROL_PATH" \
+		"$SSH_TARGET"
+}
+
+stop_ssh_master() {
+	if [[ -n "$SSH_CONTROL_PATH" ]]; then
+		ssh -S "$SSH_CONTROL_PATH" -O exit "$SSH_TARGET" >/dev/null 2>&1 || true
+	fi
+	if [[ -n "$SSH_CONTROL_DIR" ]]; then
+		rm -rf "$SSH_CONTROL_DIR"
+	fi
+}
+
+push_file() {
+	local source="$1"
+	local destination="$2"
+	if [[ "$DEPLOY_TRANSPORT" == adb ]]; then
+		adb push "$source" "$destination"
+	else
+		scp -o ControlPath="$SSH_CONTROL_PATH" \
+			"$source" "${SSH_TARGET}:${destination}"
+	fi
+}
+
+remote_exec() {
+	if [[ "$DEPLOY_TRANSPORT" == adb ]]; then
+		adb shell "$@"
+	else
+		ssh -S "$SSH_CONTROL_PATH" "$SSH_TARGET" "$@"
+	fi
+}
 
 if [[ ! -f "${MODULE}" ]]; then
     echo "Missing kernel module: ${MODULE}" >&2
@@ -96,38 +156,51 @@ if [[ ! -f "${CAMERA_IQ}" ]]; then
     exit 1
 fi
 
-adb get-state >/dev/null
+if [[ "$DEPLOY_TRANSPORT" == adb ]]; then
+	if ! command -v adb >/dev/null 2>&1; then
+		echo "Missing required command: adb" >&2
+		exit 1
+	fi
+	adb get-state >/dev/null
+else
+	trap stop_ssh_master EXIT
+	start_ssh_master
+	if ! remote_exec sh -c 'test "$(id -u)" = 0'; then
+		echo "SSH deployment requires root login (tried ${SSH_TARGET})." >&2
+		exit 1
+	fi
+fi
 
 echo "Pushing IMX415 kernel module"
-adb push "${MODULE}" "${REMOTE_MODULE}"
+push_file "${MODULE}" "${REMOTE_MODULE}"
 
 echo "Pushing LED test script"
-adb push "${LED_TEST}" "${REMOTE_SCRIPT}"
+push_file "${LED_TEST}" "${REMOTE_SCRIPT}"
 
 echo "Pushing rkipc supervisor"
-adb push "${RKIPC_SUPERVISOR}" "${REMOTE_RKIPC_SUPERVISOR}"
+push_file "${RKIPC_SUPERVISOR}" "${REMOTE_RKIPC_SUPERVISOR}"
 
 echo "Pushing init script"
-adb push "${INIT_SCRIPT}" "${REMOTE_INIT}"
+push_file "${INIT_SCRIPT}" "${REMOTE_INIT}"
 
 echo "Pushing night-vision configuration"
-adb push "${NIGHT_VISION_CONFIG}" "${REMOTE_NIGHT_VISION_CONFIG}"
+push_file "${NIGHT_VISION_CONFIG}" "${REMOTE_NIGHT_VISION_CONFIG}"
 
 echo "Pushing optional night-vision shell controller"
-adb push "${NIGHT_VISION_SHELL_SCRIPT}" "${REMOTE_NIGHT_VISION_SHELL_SCRIPT}"
+push_file "${NIGHT_VISION_SHELL_SCRIPT}" "${REMOTE_NIGHT_VISION_SHELL_SCRIPT}"
 
 echo "Pushing night-vision service and JPEG image processor"
-adb push "${NIGHT_VISION_SERVICE_BIN}" "${REMOTE_NIGHT_VISION_SERVICE_BIN}"
-adb push "${NIGHT_VISION_MEASUREMENT_BIN}" "${REMOTE_NIGHT_VISION_MEASUREMENT_BIN}"
+push_file "${NIGHT_VISION_SERVICE_BIN}" "${REMOTE_NIGHT_VISION_SERVICE_BIN}"
+push_file "${NIGHT_VISION_MEASUREMENT_BIN}" "${REMOTE_NIGHT_VISION_MEASUREMENT_BIN}"
 
 echo "Pushing camera init script and configuration"
-adb push "${CAMERA_INIT}" "${REMOTE_CAMERA_INIT}"
-adb push "${CAMERA_INI}" "${REMOTE_CAMERA_INI}"
-adb push "${CAMERA_IQ}" "${REMOTE_CAMERA_IQ}"
+push_file "${CAMERA_INIT}" "${REMOTE_CAMERA_INIT}"
+push_file "${CAMERA_INI}" "${REMOTE_CAMERA_INI}"
+push_file "${CAMERA_IQ}" "${REMOTE_CAMERA_IQ}"
 
-echo "Installing files and restarting the camera services"
-adb shell "
-    test \"\$(id -u)\" = 0
+echo "Installing files and restarting the camera services via ${DEPLOY_TRANSPORT}"
+remote_exec sh -s <<REMOTE_INSTALL
+    set -e
     if [ -x '${INSTALLED_INIT}' ]; then
         '${INSTALLED_INIT}' stop
     fi
@@ -173,7 +246,7 @@ adb shell "
     test -f '${INSTALLED_CAMERA_INI}'
     test -f '${INSTALLED_CAMERA_IQ}'
     grep '^imx415 ' /proc/modules
-"
+REMOTE_INSTALL
 
 echo "Deployment complete"
 echo "Run on the device: ${INSTALLED_SCRIPT}"

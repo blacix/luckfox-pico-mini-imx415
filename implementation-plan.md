@@ -306,17 +306,21 @@ current defaults in these measured conditions, not a general guarantee;
 close reflective objects and other scenes can still change the captured
 brightness substantially.
 
-**Next: characterize LED compensation versus output level.** In one fixed dark
-scene, hold the camera in night mode (night shutter position and the same ISP
-night setting), then collect repeated `night-vision-measurement` samples with
-the IR LED off, at 10%, 50%, and 100% brightness. Allow exposure to settle
-after each LED change and record the actual LED brightness, `mean_y`, and
-`p90_y` in the measurement log. Use the LED-off result as the baseline and
-compare the mean increase at each output level. Fit a linear compensation from
-the 10% and 100% measurements, then use the 50% measurement to check whether
-that model is reasonable. Only adopt linear scaling if the intermediate result
-supports it; otherwise retain a fixed estimate or use a better-supported
-calibration.
+**Next: characterize LED compensation versus output level and ambient light.**
+Repeat the measurements in both a controlled light condition and a dark-room
+condition. In each condition, hold the camera in night mode (night shutter
+position and the same ISP night setting), keep the framing and scene fixed,
+and collect repeated `night-vision-measurement` samples with the IR LED off,
+at 10%, 50%, and 100% brightness. Allow exposure to settle after each LED
+change and record the ambient-light condition, actual LED brightness,
+`mean_y`, and `p90_y` in the measurement log. Use the LED-off result as the
+baseline separately for each ambient-light condition, then compare the mean
+increase at each output level. Fit a linear compensation from the 10% and 100%
+measurements in each condition and use the 50% measurement to check the model.
+Determine whether one linear model fits both conditions or if the LED effect
+changes with ambient light. Adopt linear scaling only if the intermediate and
+cross-condition results support it; otherwise retain a fixed estimate or use a
+better-supported calibration.
 
 Controlled captures are recorded in
 [the measurement log](camera/night-vision/jpeg-processing/measurements.md).
