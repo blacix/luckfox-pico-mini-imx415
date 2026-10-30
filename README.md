@@ -255,6 +255,10 @@ docker compose -f docker/compose.yaml run --rm builder
 docker compose -f docker/compose.yaml run --rm builder sc3336
 ```
 
+Each `run` invokes the container entrypoint, which runs the repository's
+`./build.sh` with the optional camera argument. With no argument,
+`build.sh` defaults to `imx415`.
+
 On the first `run`, Docker creates the `a-eye-luckfox-sdk` named volume and
 initializes it from the clean SDK in the image. The build script copies the
 tracked project files into that writable SDK volume and builds there. The
