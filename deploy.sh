@@ -210,9 +210,6 @@ remote_exec sh -s <<REMOTE_INSTALL
     else
         killall rkipc 2>/dev/null || true
     fi
-    if grep -q '^imx415 ' /proc/modules; then
-        rmmod imx415
-    fi
     chmod 0755 '${REMOTE_NIGHT_VISION_SHELL_SCRIPT}'
     mv '${REMOTE_NIGHT_VISION_SHELL_SCRIPT}' '${INSTALLED_NIGHT_VISION_SHELL_SCRIPT}'
     chmod 0755 '${REMOTE_SCRIPT}'
@@ -234,7 +231,6 @@ remote_exec sh -s <<REMOTE_INSTALL
     mv '${REMOTE_CAMERA_IQ}' '${INSTALLED_CAMERA_IQ}'
     mkdir -p /oem/usr/ko
     mv '${REMOTE_MODULE}' '${INSTALLED_MODULE}'
-    insmod '${INSTALLED_MODULE}'
     '${INSTALLED_CAMERA_INIT}' start
     '${INSTALLED_INIT}' restart
     test -x '${INSTALLED_SCRIPT}'

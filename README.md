@@ -234,6 +234,64 @@ not a driver-only build. The tracked DTSI configures PWM0 as the LED consumer,
 and the tracked kernel defconfig enables PWM LED support and both SC3336 and
 IMX415 drivers. Choose the camera attached to the board for each build:
 
+### Docker build environment
+
+The optional Docker environment is in `docker/`. It starts from Ubuntu 24.04,
+installs the SDK build dependencies, and downloads the Luckfox SDK at the
+revision pinned in `docker/Dockerfile`. It also preselects the Pico Mini,
+SPI-NAND, Buildroot board configuration. Project files are mounted from the
+checkout at runtime; they are not copied into the Docker image.
+
+Build the Docker image once after cloning:
+
+```sh
+docker compose -f docker/compose.yaml build
+```
+
+Build the default IMX415 firmware, or pass `sc3336` for the stock camera:
+
+```sh
+docker compose -f docker/compose.yaml run --rm builder
+docker compose -f docker/compose.yaml run --rm builder sc3336
+```
+
+On the first `run`, Docker creates the `a-eye-luckfox-sdk` named volume and
+initializes it from the clean SDK in the image. The build script copies the
+tracked project files into that writable SDK volume and builds there. The
+volume persists across runs and image rebuilds, including SDK build outputs
+and `.orig` backups. Removing the volume discards that state; a rebuilt image
+does not replace an already initialized volume. The generated `update.img` is
+copied to the host at `build/update.img`. The SDK's Linux `upgrade_tool`, its
+configuration, and its Rockusb udev rule are copied to `build/upgrade_tool/`
+for host-side flashing:
+
+```sh
+sudo ./build/upgrade_tool/upgrade_tool uf ./build/update.img
+```
+
+The copied files are owned by the configured host UID and GID. Compose
+defaults `HOST_UID` and `HOST_GID` to 1000. If your account uses different
+IDs, set them for the build command, for example:
+
+```sh
+HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
+  docker compose -f docker/compose.yaml run --rm builder
+```
+
+The Docker image itself does not contain the checkout's tracked kernel,
+camera, or overlay files. Those are read from the mounted checkout whenever
+the container runs. The SDK source is pinned to commit
+[`824b817`](https://github.com/LuckfoxTECH/luckfox-pico/commit/824b817f889c2cbff1d48fcdb18ab494a68f69d).
+Luckfox documents Ubuntu 22.04 as its primary SDK build environment in its
+[SDK setup guide](https://wiki.luckfox.com/Luckfox-Pico-Pi/SDK/); this project
+uses Ubuntu 24.04 in Docker, so the first full SDK build is the compatibility
+check for that base image.
+
+This Docker flow does not run `lunch`: the image seeds the SDK with the same
+Pico Mini SPI-NAND Buildroot selection used by the project. The native build
+flow below still uses `sdk/luckfox-pico` and requires the manual `lunch` step
+the first time.
+
 1. Keep camera node definitions in the tracked DTSI and configure the PWM LED
    and kernel options in the tracked project files. The build script enables
    only the selected camera. SC3336 uses D-PHY input 0; IMX415 uses input 3.
@@ -332,10 +390,11 @@ tracked project files to the device:
 - the camera IQ JSON to `/usr/share/iqfiles/`;
 - `imx415.ko` to `/oem/usr/ko/imx415.ko`.
 
-The script stops the LED and camera services, unloads the currently loaded
-IMX415 module if present, installs and loads the new module, then starts the
-camera and night-vision services. The camera service launches `rkipc` with the
-deployed INI and IQ directory. The script removes the retired
+The script stops the LED and camera services, installs the files, then starts
+the camera and night-vision services. It copies `imx415.ko` to
+`/oem/usr/ko/imx415.ko` but leaves the currently loaded module unchanged; reboot
+the device to load a newly deployed module. The camera service launches `rkipc`
+with the deployed INI and IQ directory. The script removes the retired
 `/usr/bin/night-vision-jpeg` measurement binary. It does not remove old
 init-service filenames from a running image; flash a newly built image to
 apply the service rename cleanly.

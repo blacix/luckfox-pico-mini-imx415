@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-SDK_DIR="${ROOT_DIR}/sdk/luckfox-pico"
+SDK_DIR="${A_EYE_SDK_DIR:-${ROOT_DIR}/sdk/luckfox-pico}"
 CAMERA="${1:-imx415}"
 DTSI_SOURCE="${ROOT_DIR}/kernel/rv1103-luckfox-pico-ipc.dtsi"
 DTSI_TARGET="${SDK_DIR}/sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi"
