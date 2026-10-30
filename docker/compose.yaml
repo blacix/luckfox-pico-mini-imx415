@@ -1,0 +1,28 @@
+name: a-eye-luckfox
+
+services:
+  builder:
+    image: a-eye/luckfox-builder:ubuntu24.04
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    environment:
+      A_EYE_SDK_DIR: /opt/luckfox-pico
+      HOST_UID: "${HOST_UID:-1000}"
+      HOST_GID: "${HOST_GID:-1000}"
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace
+        read_only: true
+      - type: volume
+        source: luckfox-sdk
+        target: /opt/luckfox-pico
+      - type: bind
+        source: ../build
+        target: /output
+
+volumes:
+  luckfox-sdk:
+    name: a-eye-luckfox-sdk
