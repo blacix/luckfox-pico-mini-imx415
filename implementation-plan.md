@@ -58,7 +58,7 @@ Build and flash the IMX415 image, then verify:
 - Link frequency, pixel rate, HBLANK, VBLANK minimum, and exposure limits
   match the mode. VTS must not fall below 2700; increased VBLANK must change
   the reported frame interval.
-- With the INI configured for 20 fps, measure approximately 20 distinct
+- With the INI configured for 25 fps, measure approximately 25 distinct
   frames per second for at least 60 seconds. Do not infer delivered frame rate
   only from RTSP metadata. CIF/ISP error counters should remain stable, and the
   Mini should not run out of memory.

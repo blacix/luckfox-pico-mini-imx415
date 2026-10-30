@@ -27,6 +27,7 @@ remaining work is end-to-end validation on the Pico Mini.
 .
 ├── README.md
 ├── camera.md
+├── fps.md
 ├── build.sh                       # Synchronizes project inputs and builds firmware
 ├── deploy.sh                      # Deploys selected changes to a running device
 ├── camera/                       # Tracked IMX415 camera configuration
@@ -72,6 +73,8 @@ remaining work is end-to-end validation on the Pico Mini.
 
 - `camera.md` records the current board state, camera pipeline findings,
   installed drivers, firmware contents, and hardware compatibility questions.
+- `fps.md` summarizes the requested and driver-supported frame rates, plus the
+  constraints on attempting 30 fps with the RV1103 CSI receiver.
 - `implementation-plan.md` lists the remaining camera-selection and 1080p
   validation work.
 
@@ -896,10 +899,11 @@ sensor pad as `SGBRG12_1X12/1944x1097`; its selection rectangle describes the
 | Driver HTS / minimum VTS | 2200 / 2700 | Controls and frame timing; VTS cannot go below 2700 |
 | Calculated pixel rate | 148.5 MHz | `445.5 MHz × 2 lanes × 2 / 12 bits` |
 | Driver mode limit | 25 fps | `148.5 MHz / (2200 × 2700)` |
-| Application profile | 20 fps | Requested source/destination rate and GOP in the INI |
+| Application profile | 25 fps | Requested source/destination rate and GOP in the INI |
 
-The 25 fps value is the driver's mode ceiling. The tracked INI is set to 20 fps;
-it is not an instruction to run the application stream at 25 fps.
+The tracked INI requests 25 fps, matching the driver's current mode ceiling.
+That request does not guarantee 25 delivered frames per second; end-to-end
+measurement is still required.
 
 ### Key sensor register settings
 
