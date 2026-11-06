@@ -1,14 +1,15 @@
 # Night-vision service
 
-`night-vision.cpp` is the long-running controller for the JPEG image processor
-in [`../image-processor/`](../image-processor/README.md). Every 2 seconds by
-default, it reads the processor's `mean_y` and `p90_y` JSON values and applies
-hysteresis.
+`night-vision.cpp` is the long-running night/day controller. It defaults to
+reading live sensor exposure and gain with `v4l2-ctl` while RKIPC streams.
+Select `--measurement-method jpeg` to use the image processor in
+[`../image-processor/`](../image-processor/README.md), which reports `mean_y`
+and `p90_y`.
 The init script reads thresholds, sample interval, mode settle time, LED mean
 compensation, and required consecutive sample count from
 `/etc/default/a-eye-night-vision` and passes them to the executable as
 command-line options; the C++ program does not read the file itself. The
-tracked source config currently enters night mode below `mean_y` 75. It returns
+tracked source config enters night mode below `mean_y` 75. It returns
 to day when `mean_y` minus `NIGHT_LED_MEAN_COMPENSATION` is above 75 and
 `p90_y` is in the inclusive 110..210 acceptance band. The compensation defaults
 to 20 and applies only to the day-return mean while night mode is active;
@@ -21,6 +22,17 @@ shutter input is active-low: night mode sets
 GPIO116 low and day mode sets it high. On SC3336, GPIO116 is left untouched
 because it carries the camera reference clock. Both camera modes drive the PWM
 IR LED at 10% of its reported maximum brightness at night and turn it off by day.
+
+V4L2 mode calculates `2.55 / (exposure_seconds * linear_gain)` and initially
+uses score thresholds (100 for night, 500 for day), with LED score
+compensation disabled until measured. Available SC3336 readings were about 32
+in darkness and 1065 in a lower-light day condition. IMX415 with IR-cut and IR
+LED enabled has not yet been measured, so these starting values need
+calibration.
+Optional `NIGHT_EXPOSURE_THRESHOLD_SECONDS` and `DAY_GAIN_MAX` provide
+additional V4L2 triggers; zero disables them. Sensor-control readings are
+driver cached and are not matched to individual frames. Validate AE response
+to lighting changes on each camera before tuning.
 
 The grayscale backend is selected at compile time with `RKIPC_NIGHT_MODE`:
 

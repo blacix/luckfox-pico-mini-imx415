@@ -1,4 +1,4 @@
-# Night-vision controller settings. Both controllers use these values.
+# JPEG measurement thresholds, in luma values.
 # Keep usable borderline indoor images in day mode.
 NIGHT_ON_THRESHOLD=75
 DAY_ON_THRESHOLD=75
@@ -15,3 +15,17 @@ MODE_SETTLE_SECONDS=10
 SWITCH_SAMPLES_REQUIRED=2
 # IR LED output as a percentage of the device's reported max_brightness.
 LED_INTENSITY_PERCENT=10
+# The C++ service defaults to live sensor controls through V4L2. The existing
+# JPEG measurement method remains selectable with --measurement-method jpeg.
+MEASUREMENT_METHOD=v4l2
+V4L2_DEVICE=
+# Initial V4L2 score thresholds from SC3336 readings (dark: about 32; lower-
+# light day: about 1065). IMX415 with IR-cut and IR LED enabled still needs
+# measurement and calibration. No LED score compensation until measured.
+V4L2_NIGHT_ON_THRESHOLD=100
+V4L2_DAY_ON_THRESHOLD=500
+V4L2_LED_COMPENSATION=0
+# Optional independent triggers; 0 disables them until sensor-specific
+# calibration establishes useful values.
+NIGHT_EXPOSURE_THRESHOLD_SECONDS=0
+DAY_GAIN_MAX=0

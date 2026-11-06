@@ -184,10 +184,11 @@ not replaced by a tracked project file. The script clears existing
 overlay before installing the files for the selected camera. Both builds get
 `S99a-eye-night-vision`, its settings file, and `test-pwm-led.sh`. The init
 service does not call the LED tester; it starts the compiled
-`/usr/bin/night-vision` app on both builds. On IMX415, GPIO3_C4 is the shutter
-line. IMX415 builds also include
-`night-vision.sh` as an optional manual alternative; do not run it alongside
-the C++ service. On SC3336 the service still switches the PWM LED, but leaves
+`/usr/bin/night-vision` app on both builds. Both builds also install
+`/usr/bin/night-vision.sh` as an optional alternative controller; it supports
+the configured JPEG or V4L2 measurement method. Do not run it alongside the
+C++ service. On IMX415, GPIO3_C4 is the shutter line. On SC3336 the service
+still switches the PWM LED, but leaves
 GPIO3_C4 untouched because it carries the camera reference clock. Only an IMX415
 build gets `S99a-eye-cam`, `rkipc-supervisor.sh`, the IMX415 INI, and its IQ JSON. An
 SC3336 build therefore leaves the SDK's stock camera configuration and IQ
@@ -382,8 +383,6 @@ For an IMX415 image, `deploy.sh` pushes the built `imx415.ko` and these
 tracked project files to the device:
 
 - `overlay/a-eye/usr/bin/test-pwm-led.sh` to `/usr/bin/test-pwm-led.sh`;
-- `overlay/a-eye/usr/bin/night-vision.sh` to `/usr/bin/night-vision.sh` as an
-  optional manual alternative to the C++ service;
 - `night-vision` and `night-vision-measurement` from the SDK app build to
   `/usr/bin/night-vision` and `/usr/bin/night-vision-measurement`;
 - `overlay/a-eye/usr/bin/rkipc-supervisor.sh` to
@@ -647,18 +646,31 @@ The init script can also be controlled manually from the device shell:
 /etc/init.d/S99a-eye-night-vision restart
 ```
 
-On both camera builds, `S99a-eye-night-vision` supervises
-`/usr/bin/night-vision`. The C++ controller asks
-`/usr/bin/night-vision-measurement` for a sample every 2 seconds by default and uses
-its `mean_y` value. The init script reads `/etc/default/a-eye-night-vision` and
-passes its settings as command-line options; the C++ executable does not read
-that file itself. Edit the tracked `overlay/a-eye/etc/default/a-eye-night-vision`
-before building, or edit the installed file on the device and restart the service.
+On both camera builds, `S99a-eye-night-vision` supervises `/usr/bin/night-vision`.
+It reads live sensor exposure and gain through V4L2 by default while RKIPC
+continues streaming. Select JPEG processing with `--measurement-method jpeg`.
+The init script reads `/etc/default/a-eye-night-vision` and passes settings as
+command-line options. Edit the tracked config before building or edit the
+installed config and restart the service.
+
+V4L2 finds the active SC3336 or IMX415 subdevice and reads `exposure`,
+`analogue_gain`, `pixel_rate`, and `horizontal_blanking` with `v4l2-ctl`. It converts these
+to exposure seconds and linear gain, then calculates
+`score = 2.55 / (exposure_seconds * linear_gain)`. This score estimates
+exposure compensation; it is not image luma or calibrated lux. Initial V4L2
+score thresholds are 100 for night and 500 for day, with LED score
+compensation disabled until measured. The available SC3336 readings were about
+32 in darkness and 1065 in a lower-light day condition. IMX415 with IR-cut and
+IR LED enabled has not yet been measured, so these starting values need
+calibration. `V4L2_DEVICE` may be set in `/etc/default/a-eye-night-vision` to
+pin discovery to a specific `/dev/v4l-subdevN`; empty means auto-detect.
+`NIGHT_EXPOSURE_THRESHOLD_SECONDS` and `DAY_GAIN_MAX` are optional extra
+triggers, disabled at zero. Override discovery with `--v4l2-device`.
 `mean_y` is the
 average pixel luma calculated from the decoded JPEG
 using BT.601 RGB weights (0.299 red + 0.587 green + 0.114 blue). It estimates
 image brightness, not physical ambient light in lux, and is affected by camera
-exposure and image processing. The current settings enter night mode below mean
+exposure and image processing. The JPEG settings enter night mode below mean
 luma 75 and return to day mode when the compensated mean exceeds 75 and `p90_y`
 is in the inclusive 110..210 range. The tracked config requires two consecutive qualifying samples
 (`SWITCH_SAMPLES_REQUIRED=2`) before a transition; adjust this setting to change
@@ -701,7 +713,8 @@ the image effect while the service continues to control the shutter on
 GPIO116 and the IR LED itself. The SDK API's return status is unreliable in
 this configuration; the service reports successful socket delivery, not
 verified IR-cut state.
-The optional shell implementation uses the same thresholds and controls the
+The optional shell implementation reads the same settings file, supports the
+selected JPEG or V4L2 method with method-specific thresholds, and controls the
 same LED; on IMX415 it also controls the shutter. Stop the init service before
 running it manually so the two controllers do not compete:
 
@@ -713,6 +726,70 @@ running it manually so the two controllers do not compete:
 `test-pwm-led.sh` remains installed for manual LED testing and is not called by
 the init service. On SC3336, night mode changes the LED only and leaves the
 camera's GPIO3_C4 reference-clock path alone.
+
+### Reading exposure time and gain while RKIPC runs
+
+Reading sensor controls does not require stopping RKIPC. Direct frame capture
+can conflict with RKIPC's ownership of the camera pipeline; the following
+commands only read controls and do not capture frames.
+
+Find the sensor subdevice first; its number can change between camera builds:
+
+```sh
+adb shell 'for d in /sys/class/video4linux/v4l-subdev*; do echo "$d: $(cat "$d/name")"; done'
+```
+
+On the connected SC3336, the sensor was `/dev/v4l-subdev2`. This command
+succeeded while RKIPC remained running:
+
+```sh
+adb shell 'v4l2-ctl -d /dev/v4l-subdev2 --get-ctrl=exposure,analogue_gain; pidof rkipc'
+```
+
+It returned `exposure: 816` and `analogue_gain: 849`, with RKIPC PID `294`
+unchanged. Three subsequent readings returned the same values. These are the
+driver's cached, last-set sensor controls, not a hardware register readback or
+exposure metadata associated with a particular video frame. Their units and
+gain conversion depend on the sensor driver; do not interpret them directly
+as seconds and a gain multiplier. Tracking changes in auto exposure still
+needs validation by changing the lighting while polling. This read was tested
+on SC3336; the tracked IMX415 driver also defines these controls, but its
+readback during streaming has not yet been tested.
+
+RKIPC's `/var/tmp/rkipc` socket exposes `rk_isp_get_exposure_time()` and
+`rk_isp_get_exposure_gain()`. In this SDK, these read configured parameters,
+not the live results selected by auto exposure.
+
+The selected additional measurement method uses `v4l2-ctl` to read sensor
+controls while RKIPC runs. It requires no RKIPC source patch, new socket
+command, or access to RKIPC's AIQ context.
+
+As a background finding, there is also a separate AIQ tuning socket.
+`/tmp/UNIX.domain0` was listening
+on the connected device while RKIPC ran, and the SDK's RV1106 `librkaiq.so`
+contains the endpoint `/uapi/0/ae_uapi/expinfo`. The SDK's `uapi_expinfo_t`
+structure includes `LinAeInfo.LinearExp.integration_time`, `analog_gain`,
+`digital_gain`, and `isp_dgain`, plus mean luma and exposure convergence
+information. This is a candidate for obtaining live exposure results through
+the existing library without modifying RKIPC or sharing its context pointer.
+The socket protocol and an actual query response still need validation;
+finding the endpoint in the library does not establish a working client.
+This socket is outside the selected V4L2 implementation.
+See the [implementation plan](implementation-plan.md#live-exposure-and-gain-readback--investigate)
+for the remaining work.
+
+V4L2 is the planned default measurement method; the legacy JPEG method will
+remain selectable with `--measurement-method jpeg`. This selection is not
+implemented yet. The planned V4L2 method also includes two additional
+triggers: enter night when exposure time reaches
+`NIGHT_EXPOSURE_THRESHOLD_SECONDS`, regardless of gain, and enter day when
+linear analog gain falls below `DAY_GAIN_MAX`, regardless of exposure time.
+These supplement the exposure-score thresholds and retain the consecutive
+sample count and settling delay. The settings are planned, not yet supported
+by the service; their numerical defaults have not been chosen. Long exposure
+with low gain, including low gain caused by IR illumination, may produce
+conflicting transitions. That edge case is recorded for later investigation
+in the [implementation plan](implementation-plan.md#selectable-jpeg-and-v4l2-measurement-methods--planned).
 
 ## Optional: manually loading the module on the device
 

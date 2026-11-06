@@ -30,7 +30,6 @@ LED_TEST="${ROOT_DIR}/overlay/a-eye/usr/bin/test-pwm-led.sh"
 RKIPC_SUPERVISOR="${ROOT_DIR}/overlay/a-eye/usr/bin/rkipc-supervisor.sh"
 INIT_SCRIPT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-night-vision"
 NIGHT_VISION_CONFIG="${ROOT_DIR}/overlay/a-eye/etc/default/a-eye-night-vision"
-NIGHT_VISION_SHELL_SCRIPT="${ROOT_DIR}/overlay/a-eye/usr/bin/night-vision.sh"
 NIGHT_VISION_SERVICE_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision"
 NIGHT_VISION_MEASUREMENT_BIN="${ROOT_DIR}/sdk/luckfox-pico/project/app/out/root/usr/bin/night-vision-measurement"
 CAMERA_INIT="${ROOT_DIR}/overlay/a-eye/etc/init.d/S99a-eye-cam"
@@ -41,7 +40,6 @@ REMOTE_SCRIPT=/tmp/test-pwm-led.sh
 REMOTE_RKIPC_SUPERVISOR=/tmp/rkipc-supervisor.sh
 REMOTE_INIT=/tmp/S99a-eye-night-vision
 REMOTE_NIGHT_VISION_CONFIG=/tmp/a-eye-night-vision
-REMOTE_NIGHT_VISION_SHELL_SCRIPT=/tmp/night-vision.sh
 REMOTE_NIGHT_VISION_SERVICE_BIN=/tmp/night-vision
 REMOTE_NIGHT_VISION_MEASUREMENT_BIN=/tmp/night-vision-measurement
 REMOTE_CAMERA_INIT=/tmp/S99a-eye-cam
@@ -51,7 +49,6 @@ INSTALLED_SCRIPT=/usr/bin/test-pwm-led.sh
 INSTALLED_RKIPC_SUPERVISOR=/usr/bin/rkipc-supervisor.sh
 INSTALLED_INIT=/etc/init.d/S99a-eye-night-vision
 INSTALLED_NIGHT_VISION_CONFIG=/etc/default/a-eye-night-vision
-INSTALLED_NIGHT_VISION_SHELL_SCRIPT=/usr/bin/night-vision.sh
 INSTALLED_NIGHT_VISION_SERVICE_BIN=/usr/bin/night-vision
 INSTALLED_NIGHT_VISION_MEASUREMENT_BIN=/usr/bin/night-vision-measurement
 RETIRED_NIGHT_VISION_JPEG_BIN=/usr/bin/night-vision-jpeg
@@ -124,11 +121,6 @@ if [[ ! -f "${NIGHT_VISION_CONFIG}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${NIGHT_VISION_SHELL_SCRIPT}" ]]; then
-    echo "Missing optional night-vision shell controller: ${NIGHT_VISION_SHELL_SCRIPT}" >&2
-    exit 1
-fi
-
 if [[ ! -f "${NIGHT_VISION_SERVICE_BIN}" ]]; then
     echo "Missing night-vision service executable: ${NIGHT_VISION_SERVICE_BIN}" >&2
     echo "Build the SDK application packages first." >&2
@@ -187,9 +179,6 @@ push_file "${INIT_SCRIPT}" "${REMOTE_INIT}"
 echo "Pushing night-vision configuration"
 push_file "${NIGHT_VISION_CONFIG}" "${REMOTE_NIGHT_VISION_CONFIG}"
 
-echo "Pushing optional night-vision shell controller"
-push_file "${NIGHT_VISION_SHELL_SCRIPT}" "${REMOTE_NIGHT_VISION_SHELL_SCRIPT}"
-
 echo "Pushing night-vision service and JPEG image processor"
 push_file "${NIGHT_VISION_SERVICE_BIN}" "${REMOTE_NIGHT_VISION_SERVICE_BIN}"
 push_file "${NIGHT_VISION_MEASUREMENT_BIN}" "${REMOTE_NIGHT_VISION_MEASUREMENT_BIN}"
@@ -210,8 +199,6 @@ remote_exec sh -s <<REMOTE_INSTALL
     else
         killall rkipc 2>/dev/null || true
     fi
-    chmod 0755 '${REMOTE_NIGHT_VISION_SHELL_SCRIPT}'
-    mv '${REMOTE_NIGHT_VISION_SHELL_SCRIPT}' '${INSTALLED_NIGHT_VISION_SHELL_SCRIPT}'
     chmod 0755 '${REMOTE_SCRIPT}'
     mv '${REMOTE_SCRIPT}' '${INSTALLED_SCRIPT}'
     chmod 0755 '${REMOTE_RKIPC_SUPERVISOR}'
@@ -236,7 +223,6 @@ remote_exec sh -s <<REMOTE_INSTALL
     test -x '${INSTALLED_SCRIPT}'
     test -x '${INSTALLED_RKIPC_SUPERVISOR}'
     test -x '${INSTALLED_INIT}'
-    test -x '${INSTALLED_NIGHT_VISION_SHELL_SCRIPT}'
     test -x '${INSTALLED_NIGHT_VISION_SERVICE_BIN}'
     test -x '${INSTALLED_NIGHT_VISION_MEASUREMENT_BIN}'
     test -x '${INSTALLED_CAMERA_INIT}'

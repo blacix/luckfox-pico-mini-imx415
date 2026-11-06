@@ -16,6 +16,13 @@ INTERVAL_SECONDS=2
 MODE_SETTLE_SECONDS=10
 SWITCH_SAMPLES_REQUIRED=2
 LED_INTENSITY_PERCENT=10
+MEASUREMENT_METHOD=v4l2
+V4L2_DEVICE=
+V4L2_NIGHT_ON_THRESHOLD=100
+V4L2_DAY_ON_THRESHOLD=500
+V4L2_LED_COMPENSATION=0
+NIGHT_EXPOSURE_THRESHOLD_SECONDS=0
+DAY_GAIN_MAX=0
 
 if [ -r "$CONFIG_FILE" ]; then
 	. "$CONFIG_FILE"
@@ -38,6 +45,10 @@ start() {
 	fi
 
 	rm -f "$PIDFILE"
+	# Alternative shell controller (uses MEASUREMENT_METHOD from the config):
+	# Uncomment this call and comment out the full C++ start-stop-daemon block
+	# below. Run only one controller.
+	# start-stop-daemon -S -q -b -m -p "$PIDFILE" -x /usr/bin/night-vision.sh --
 	if ! start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$NIGHT_VISION" -- \
 		--night-on "$NIGHT_ON_THRESHOLD" \
 		--day-on "$DAY_ON_THRESHOLD" \
@@ -47,7 +58,14 @@ start() {
 		--interval-sec "$INTERVAL_SECONDS" \
 		--mode-settle-sec "$MODE_SETTLE_SECONDS" \
 		--samples-required "$SWITCH_SAMPLES_REQUIRED" \
-		--led-intensity-percent "$LED_INTENSITY_PERCENT"; then
+		--led-intensity-percent "$LED_INTENSITY_PERCENT" \
+		--measurement-method "$MEASUREMENT_METHOD" \
+		--v4l2-device "$V4L2_DEVICE" \
+		--v4l2-night-on "$V4L2_NIGHT_ON_THRESHOLD" \
+		--v4l2-day-on "$V4L2_DAY_ON_THRESHOLD" \
+		--v4l2-led-compensation "$V4L2_LED_COMPENSATION" \
+		--night-exposure-threshold-sec "$NIGHT_EXPOSURE_THRESHOLD_SECONDS" \
+		--day-gain-max "$DAY_GAIN_MAX"; then
 		rm -f "$PIDFILE"
 		echo "Could not start night vision" >&2
 		return 1

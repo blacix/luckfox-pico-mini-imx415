@@ -4,7 +4,10 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <dirent.h>
+#include <cmath>
 #include <iostream>
+#include <sstream>
 #include "rkipc_isp.h"
 #include <string>
 #include <sys/types.h>
@@ -14,6 +17,8 @@
 namespace {
 
 constexpr char kMeasurementApp[] = "/usr/bin/night-vision-measurement";
+constexpr char kV4l2Ctl[] = "/usr/bin/v4l2-ctl";
+constexpr char kVideo4Linux[] = "/sys/class/video4linux";
 constexpr char kImx415Service[] = "/etc/init.d/S99a-eye-cam";
 constexpr char kLedDirectory[] = "/sys/class/leds/pwm0_led";
 constexpr char kGpioExport[] = "/sys/class/gpio/export";
@@ -32,10 +37,20 @@ constexpr unsigned int kDefaultIntervalSeconds = 2;
 constexpr unsigned int kDefaultModeSettleSeconds = 10;
 constexpr unsigned int kDefaultSwitchSamplesRequired = 2;
 constexpr unsigned int kDefaultLedIntensityPercent = 10;
+constexpr double kV4l2ScoreScale = 2.55; // 255 * 10 ms reference exposure
 
 volatile sig_atomic_t g_running = 1;
 
 struct Options {
+ std::string measurement_method = "v4l2";
+ std::string v4l2_device;
+ // Initial score thresholds based on SC3336 readings. IMX415 with IR-cut
+ // and IR LED enabled still needs measurement and calibration.
+ double v4l2_night_on = 100.0;
+ double v4l2_day_on = 500.0;
+ double v4l2_led_compensation = 0.0;
+ double night_exposure_threshold_seconds = 0.0;
+ double day_gain_max = 0.0;
 	double night_on_threshold = kDefaultNightOnThreshold;
 	double day_on_threshold = kDefaultDayOnThreshold;
 	double day_p90_minimum = kDefaultDayP90Minimum;
@@ -50,6 +65,10 @@ struct Options {
 struct BrightnessSample {
 	double mean_y = 0.0;
 	double p90_y = 0.0;
+	double score = 0.0;
+	double exposure_seconds = 0.0;
+	double linear_gain = 0.0;
+	bool v4l2 = false;
 };
 
 enum class Mode { Day, Night };
@@ -204,6 +223,72 @@ bool capture_brightness_sample(BrightnessSample &sample, std::string &error) {
 	return true;
 }
 
+bool read_v4l2_controls(const Options &options, BrightnessSample &sample,
+			std::string &error) {
+	std::string device = options.v4l2_device;
+	std::string sensor;
+	if (device.empty()) {
+		DIR *dir = opendir(kVideo4Linux);
+		if (!dir) { error = "cannot scan video4linux devices"; return false; }
+		struct dirent *entry;
+		while ((entry = readdir(dir)) != nullptr) {
+			if (std::strncmp(entry->d_name, "v4l-subdev", 10) != 0) continue;
+			std::ifstream name(std::string(kVideo4Linux) + "/" + entry->d_name + "/name");
+			std::string value;
+			if (!(name >> value)) continue;
+			if (value.find("sc3336") != std::string::npos ||
+			    value.find("imx415") != std::string::npos) {
+				device = std::string("/dev/") + entry->d_name;
+				sensor = value;
+				break;
+			}
+		}
+		closedir(dir);
+	} else {
+		std::string base = device.substr(device.find_last_of('/') + 1);
+		std::ifstream name(std::string(kVideo4Linux) + "/" + base + "/name");
+		name >> sensor;
+	}
+	if (device.empty()) { error = "no SC3336 or IMX415 V4L2 subdevice found"; return false; }
+	int pipefd[2];
+	if (pipe(pipefd) != 0) { error = "cannot create v4l2-ctl pipe"; return false; }
+	pid_t child = fork();
+	if (child < 0) { close(pipefd[0]); close(pipefd[1]); error = "cannot fork v4l2-ctl"; return false; }
+	if (child == 0) {
+		dup2(pipefd[1], STDOUT_FILENO); dup2(pipefd[1], STDERR_FILENO);
+		close(pipefd[0]); close(pipefd[1]);
+		execl(kV4l2Ctl, kV4l2Ctl, "-d", device.c_str(), "--get-ctrl=exposure,analogue_gain,pixel_rate,horizontal_blanking", static_cast<char *>(nullptr));
+		_exit(127);
+	}
+	close(pipefd[1]);
+	std::string output; char buf[256]; ssize_t n;
+	while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) if (output.size() < 4096) output.append(buf, static_cast<size_t>(n));
+	close(pipefd[0]); int status = 0;
+	while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) { error = "v4l2-ctl could not read sensor controls: " + output; return false; }
+	auto get = [&output](const char *key, double &v) {
+		std::istringstream lines(output); std::string line;
+		while (std::getline(lines, line)) { auto p = line.find(':'); if (p == std::string::npos) continue;
+			if (line.substr(0, p).find(key) != std::string::npos) { char *end = nullptr; v = std::strtod(line.c_str()+p+1, &end); return end != line.c_str()+p+1; } }
+		return false;
+	};
+	double exp_raw=0, gain_raw=0, pixel_rate=0, hblank=0;
+	if (!get("exposure", exp_raw) || !get("analogue_gain", gain_raw) || !get("pixel_rate", pixel_rate) || !get("horizontal_blanking", hblank) || pixel_rate <= 0) { error = "missing or invalid exposure, gain, pixel_rate, or horizontal_blanking from v4l2-ctl"; return false; }
+	const bool sc = sensor.find("sc3336") != std::string::npos;
+	const bool imx = sensor.find("imx415") != std::string::npos;
+	if (!sc && !imx) { error = "unsupported sensor for V4L2 exposure conversion: " + sensor; return false; }
+	const double width = sc ? 2304.0 : 1944.0;
+	sample.exposure_seconds = (sc ? exp_raw / 16.0 : exp_raw) * (width + hblank) / pixel_rate;
+	// SC3336 exposes total gain in 1/128 units. IMX415's 0..0xf0 register
+	// maps gain as 256/(256-register), per the sensor's conversion curve.
+	sample.linear_gain = sc ? gain_raw / 128.0 : 256.0 / (256.0 - gain_raw);
+	if (sample.exposure_seconds <= 0 || sample.linear_gain <= 0) { error = "sensor returned nonpositive exposure or gain"; return false; }
+	sample.score = kV4l2ScoreScale / (sample.exposure_seconds * sample.linear_gain);
+	sample.v4l2 = true;
+	sample.mean_y = sample.score;
+	return true;
+}
+
 bool set_day_mode(Mode &mode, bool log_transition, bool shutter_control) {
 	if (!write_value(std::string(kLedDirectory) + "/brightness", "0")) {
 		log_message("could not turn off the IR LED");
@@ -355,6 +440,26 @@ bool parse_number(const char *text, double &value) {
 bool parse_options(int argc, char **argv, Options &options) {
 	for (int i = 1; i < argc; ++i) {
 		const std::string argument(argv[i]);
+		if (argument == "--measurement-method" || argument == "--v4l2-device") {
+			if (++i >= argc) return false;
+			if (argument == "--measurement-method") options.measurement_method = argv[i];
+			else options.v4l2_device = argv[i];
+			continue;
+		}
+		if (argument == "--v4l2-night-on" || argument == "--v4l2-day-on" ||
+		    argument == "--v4l2-led-compensation" ||
+		    argument == "--night-exposure-threshold-sec" || argument == "--day-gain-max") {
+			if (++i >= argc) return false;
+			char *end = nullptr; errno = 0;
+			double value = std::strtod(argv[i], &end);
+			if (errno || end == argv[i] || *end || !std::isfinite(value) || value < 0) return false;
+			if (argument == "--v4l2-night-on") options.v4l2_night_on = value;
+			else if (argument == "--v4l2-day-on") options.v4l2_day_on = value;
+			else if (argument == "--v4l2-led-compensation") options.v4l2_led_compensation = value;
+			else if (argument == "--night-exposure-threshold-sec") options.night_exposure_threshold_seconds = value;
+			else options.day_gain_max = value;
+			continue;
+		}
 		if (argument == "--night-on" || argument == "--day-on" ||
 		    argument == "--day-p90-min" || argument == "--day-p90-max" ||
 		    argument == "--night-led-mean-compensation") {
@@ -405,7 +510,9 @@ bool parse_options(int argc, char **argv, Options &options) {
 	}
 	// LED compensation is subtracted from night-mode measurements, so the
 	// effective raw boundary for returning to day is day_on + compensation.
-	return options.night_on_threshold <
+	return (options.measurement_method == "v4l2" || options.measurement_method == "jpeg") &&
+	       options.v4l2_night_on < options.v4l2_day_on + options.v4l2_led_compensation &&
+	       options.night_on_threshold <
 	           options.day_on_threshold + options.night_led_mean_compensation &&
 	       options.day_p90_minimum < options.day_p90_maximum &&
 	       options.night_led_mean_compensation <= 255.0;
@@ -413,7 +520,11 @@ bool parse_options(int argc, char **argv, Options &options) {
 
 void print_usage(const char *program) {
 	std::cerr << "Usage: " << program
-	          << " [--night-on LUMA] [--day-on LUMA]"
+	          << " [--measurement-method v4l2|jpeg] [--v4l2-device /dev/v4l-subdevN]"
+	             " [--v4l2-night-on SCORE] [--v4l2-day-on SCORE]"
+	             " [--v4l2-led-compensation SCORE]"
+	             " [--night-exposure-threshold-sec SECONDS] [--day-gain-max GAIN]"
+	             " [--night-on LUMA] [--day-on LUMA]"
 	             " [--day-p90-min LUMA] [--day-p90-max LUMA]"
 	             " [--night-led-mean-compensation LUMA]"
 	             " [--interval-sec N] [--mode-settle-sec N]"
@@ -438,7 +549,7 @@ int main(int argc, char **argv) {
 	sigaction(SIGINT, &action, nullptr);
 	sigaction(SIGTERM, &action, nullptr);
 
-	if (access(kMeasurementApp, X_OK) != 0) {
+	if (options.measurement_method == "jpeg" && access(kMeasurementApp, X_OK) != 0) {
 		log_message(std::string("missing image measurement executable: ") + kMeasurementApp);
 		return 1;
 	}
@@ -461,15 +572,24 @@ int main(int argc, char **argv) {
 	Mode mode = Mode::Night;
 	if (!set_day_mode(mode, false, shutter_control))
 		return 1;
-	log_message(std::string(shutter_control ? "shutter control enabled; "
+	const bool v4l2_method = options.measurement_method == "v4l2";
+	const std::string measurement_description = v4l2_method
+		? "monitoring V4L2 score every " + std::to_string(options.interval_seconds) +
+		  "s; night below " + std::to_string(options.v4l2_night_on) +
+		  ", day above " + std::to_string(options.v4l2_day_on) +
+		  "; night-mode day-return subtracts V4L2 score compensation " +
+		  std::to_string(options.v4l2_led_compensation)
+		: "monitoring mean_y every " + std::to_string(options.interval_seconds) +
+		  "s; night below " + std::to_string(options.night_on_threshold) +
+		  ", day above " + std::to_string(options.day_on_threshold) +
+		  " with p90_y in [" + std::to_string(options.day_p90_minimum) +
+		  ", " + std::to_string(options.day_p90_maximum) +
+		  "]; night-mode day-return subtracts mean_y LED compensation " +
+		  std::to_string(options.night_led_mean_compensation);
+	log_message(std::string("measurement method ") + options.measurement_method + "; " +
+		     (shutter_control ? "shutter control enabled; "
 					     : "shutter control disabled; LED-only mode; ") +
-		     "monitoring mean_y every " + std::to_string(options.interval_seconds) +
-	             "s; night below " + std::to_string(options.night_on_threshold) +
-	             ", day above " + std::to_string(options.day_on_threshold) +
-	             " with p90_y in [" + std::to_string(options.day_p90_minimum) +
-	             ", " + std::to_string(options.day_p90_maximum) +
-	             "]; night-mode day-return subtracts mean_y LED compensation " +
-	             std::to_string(options.night_led_mean_compensation) +
+		     measurement_description +
 	             "; switching requires " +
 	             std::to_string(options.switch_samples_required) +
 	             " consecutive samples; mode settle " +
@@ -484,7 +604,10 @@ int main(int argc, char **argv) {
 		bool mode_changed = false;
 		BrightnessSample sample;
 		std::string error;
-		if (!capture_brightness_sample(sample, error)) {
+		const bool sampled = options.measurement_method == "v4l2"
+			? read_v4l2_controls(options, sample, error)
+			: capture_brightness_sample(sample, error);
+		if (!sampled) {
 			night_candidate_count = 0;
 			day_candidate_count = 0;
 #if RKIPC_NIGHT_MODE
@@ -493,23 +616,29 @@ int main(int argc, char **argv) {
 			grayscale_state.grayscale_applied = false;
 #endif
 			if (g_running && error != last_error) {
-				log_message("no valid JPEG brightness sample: " + error);
+				log_message("no valid " + options.measurement_method + " sample: " + error);
 				last_error = error;
 			}
 		} else {
 			if (!last_error.empty()) {
-				log_message("JPEG brightness sampling recovered");
+				log_message(options.measurement_method + " sampling recovered");
 				last_error.clear();
 			}
-			const bool night_candidate =
-			    sample.mean_y < options.night_on_threshold;
+			const double night_threshold = sample.v4l2 ? options.v4l2_night_on : options.night_on_threshold;
+			const double day_threshold = sample.v4l2 ? options.v4l2_day_on : options.day_on_threshold;
+			const double led_compensation = sample.v4l2 ? options.v4l2_led_compensation : options.night_led_mean_compensation;
+			if (sample.v4l2)
+				log_message("V4L2 exposure=" + std::to_string(sample.exposure_seconds) +
+					    "s gain=" + std::to_string(sample.linear_gain) +
+					    " score=" + std::to_string(sample.score));
+			const bool night_candidate = sample.score < night_threshold ||
+			    (sample.v4l2 && options.night_exposure_threshold_seconds > 0 && sample.exposure_seconds >= options.night_exposure_threshold_seconds);
 			// Night-mode samples include IR LED light. Subtract its configured
 			// estimate only for the return-to-day mean check; p90 remains raw.
 			const bool day_candidate =
-			    sample.mean_y - options.night_led_mean_compensation >
-				    options.day_on_threshold &&
-			    sample.p90_y >= options.day_p90_minimum &&
-			    sample.p90_y <= options.day_p90_maximum;
+			    (sample.score - led_compensation > day_threshold &&
+			     (sample.v4l2 || (sample.p90_y >= options.day_p90_minimum && sample.p90_y <= options.day_p90_maximum))) ||
+			    (sample.v4l2 && options.day_gain_max > 0 && sample.linear_gain < options.day_gain_max);
 
 			if (mode == Mode::Day) {
 				day_candidate_count = 0;
